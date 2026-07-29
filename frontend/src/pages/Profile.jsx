@@ -73,11 +73,20 @@ export default function Profile() {
     setTimeout(() => setMessage(''), 2500);
   };
   const validateProfile = () => {
-    const name = fullName.trim();
-    if (name.length < 1 || name.length > 100) {
+  const name = fullName.trim();
+
+  // 1. Length Check (Fixes Issue #1480)
+  if (name.length < 1 || name.length > 100) {
     setNameError('Name must be between 1 and 100 characters.');
     return false;
-}
+  }
+
+  // 2. Prevent Wasteful Round-trips (Fixes Issue #1107 safely)
+  if (/[<>]/test(name)) {
+    setNameError('Name contains invalid characters.');
+    return false;
+  }
+
 
     setNameError('');
     return true;
