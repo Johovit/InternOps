@@ -62,8 +62,13 @@ const updateTaskSchema = z.object({
 });
 async function notifyAllInternsAsync(task, log) {
   try {
+    const startTime = Date.now();
     const totalCount = await repo.getInternEmailCount();
-    if (totalCount === 0) return;
+
+    if (totalCount === 0) {
+      log.info({ taskId: task.id }, 'No interns found to notify');
+      return;
+    }
 
     let offset = 0;
     let totalSent = 0;
@@ -98,7 +103,12 @@ async function notifyAllInternsAsync(task, log) {
     }
 
     log.info(
-      { taskId: task.id, totalSent, totalFailed },
+      {
+        taskId: task.id,
+        totalSent,
+        totalFailed,
+        durationMs: Date.now() - startTime,
+      },
       'Finished sending intern task notifications'
     );
   } catch (err) {
@@ -136,6 +146,7 @@ module.exports = async function socialTasksRoutes(fastify) {
         resourceId: task.id,
         details: { title: task.title },
       };
+<<<<<<< HEAD
       try {
         const creatorEmail = await repo.getUserEmail(req.user.id);
         if (creatorEmail) {
@@ -152,6 +163,29 @@ module.exports = async function socialTasksRoutes(fastify) {
         );
       }
       notifyAllInternsAsync(task, req.log);
+=======
+      void (async () => {
+        try {
+          const creatorEmail = await repo.getUserEmail(req.user.id);
+
+          if (creatorEmail) {
+            await emailService.sendNotification(creatorEmail, {
+              title: 'Task Created',
+              message: `Task "${task.title}" has been created successfully.`,
+              recipient: req.user.id,
+            });
+          }
+        } catch (emailErr) {
+          req.log.warn(
+            { emailErr },
+            'Task created but creator notification email failed'
+          );
+        }
+      })();
+
+      void notifyAllInternsAsync(task, req.log);
+
+>>>>>>> upstream/master
       return task;
     }
   );
@@ -295,6 +329,12 @@ module.exports = async function socialTasksRoutes(fastify) {
             deadlineBefore: {
               type: 'string',
             },
+<<<<<<< HEAD
+=======
+            department_id: {
+              type: 'string',
+            },
+>>>>>>> upstream/master
             source: {
               type: 'string',
               enum: ['manual', 'github'],

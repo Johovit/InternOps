@@ -39,6 +39,7 @@ from ..models.ai import (
 )
 from ..providers.base import AIProviderError, ProviderAPIError, ProviderRateLimitError
 from ..providers.registry import get_configured_providers_health, get_provider
+from ..core.security import sanitize_prompt
 
 router = APIRouter(prefix="/ai", tags=["AI"])
 
@@ -95,8 +96,6 @@ async def chat(
     current_user: User = Depends(get_current_user),
     _rate_limited: None = Depends(enforce_rate_limit),
 ):
-    # TODO(sanitize): run body through a real sanitizer once one exists
-    # (JS used a sanitizationMiddleware ahead of the handler)
 
     final_messages: List[dict] = []
 
@@ -146,6 +145,14 @@ async def chat(
             detail="Message content cannot be empty",
         )
 
+    try:
+        for msg in final_messages:
+            msg["content"] = sanitize_prompt(msg["content"])
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
     usage = await get_today_usage(current_user.id)
     if usage >= DAILY_AI_LIMIT:
         raise HTTPException(
@@ -159,7 +166,7 @@ async def chat(
         return ChatResponse(
             provider=result.provider, cached=result.cached, content=result.content
         )
-    except ProviderRateLimitError:
+    except ProviderRateLimitError as error:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="AI provider rate limit exceeded",
@@ -170,18 +177,18 @@ async def chat(
                 status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
                 detail="AI provider response too large",
             )
+
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="AI service unavailable",
+            detail="AI provider service unavailable",
         )
-    except AIProviderError:
+    except AIProviderError as error:
         # Covers ProviderTimeoutError, and any AIProviderError raised
         # directly by the registry (e.g. missing API key config).
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="AI service unavailable",
         )
-
 
 # ---------------------------------------------------------------------------
 # GET /ai/health
