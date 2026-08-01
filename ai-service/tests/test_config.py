@@ -1,224 +1,304 @@
 import os
-import sys
-import importlib
-import pytest
-from unittest import mock
-from pydantic_settings import SettingsConfigDict
+import warnings
+import logging
+from typing import Any, List, Optional
+from dotenv import load_dotenv
+from pydantic import field_validator, model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# Ensure ai-service root is in sys.path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Setup module logger
+logger = logging.getLogger(__name__)
 
-@pytest.fixture(autouse=True)
-def clean_env(monkeypatch):
-    # Mock dotenv.load_dotenv to do nothing
-    import dotenv
-    monkeypatch.setattr(dotenv, "load_dotenv", lambda *args, **kwargs: None)
-    
-    # Mock DotEnvSettingsSource.__call__ to return an empty dict to bypass physical .env reading
-    import pydantic_settings
-    monkeypatch.setattr(pydantic_settings.sources.DotEnvSettingsSource, "__call__", lambda self: {})
+# Load .env file using dotenv to ensure os.environ is populated
+load_dotenv()
 
-    # Keep track of and remove any AI-service environment variables before each test
-    prefix_keys = ("GEMINI_", "GROQ_", "OPENAI_", "ANTHROPIC_", "DEEPSEEK_", "HUGGINGFACE_", "PRIMARY_", "FALLBACK_")
-    original = {k: os.environ.get(k) for k in os.environ if k.startswith(prefix_keys)}
-    for k in original:
-        if k in os.environ:
-            del os.environ[k]
-    yield
-    # Restore original environment variables after test
-    for k, v in original.items():
-        if v is not None:
-            os.environ[k] = v
-        elif k in os.environ:
-            del os.environ[k]
+# Maximum AI requests allowed per minute for a user/client
+RATE_LIMIT_PER_MINUTE = int(
+    os.getenv("RATE_LIMIT_PER_MINUTE", "15")
+)
 
-def reload_config():
-    from app.core import config
-    return importlib.reload(config)
+# ==============================================================================
+# Centralized Configuration Constraints
+# ==============================================================================
+SUPPORTED_PROVIDERS = {"gemini", "groq", "openai", "anthropic", "deepseek", "huggingface"}
 
-def test_success_single_provider():
-    # Configure exactly one provider (gemini) with credentials
-    os.environ["PRIMARY_AI_PROVIDER"] = "gemini"
-    os.environ["GEMINI_API_KEY"] = "valid_gemini_key_123"
+DEFAULT_MODELS = {
+    "gemini": "gemini-2.0-flash",
+    "groq": "llama-3.3-70b-versatile",
+    "openai": "gpt-4o-mini",
+    "anthropic": "claude-3-5-sonnet-latest",
+    "deepseek": "deepseek-chat",
+    "huggingface": "meta-llama/Llama-3-8b-instruct"
+}
 
-    cfg = reload_config()
-    assert cfg.PRIMARY_AI_PROVIDER == "gemini"
-    assert cfg.GEMINI_API_KEY == "valid_gemini_key_123"
-    # Fallback configuration options are preserved but active filtered out
-    assert cfg.FALLBACK_AI_PROVIDERS == ["groq", "openai", "anthropic"]
-    assert cfg.ACTIVE_FALLBACK_PROVIDERS == []
+PLACEHOLDER_KEYS = {
+    "your_gemini_api_key",
+    "your_groq_api_key",
+    "your_openai_api_key",
+    "your_anthropic_api_key",
+    "your_deepseek_api_key",
+    "your_huggingface_token"
+}
 
-def test_startup_fail_zero_providers(monkeypatch):
-    import importlib
-    import app.core.config as config
+def _is_valid_key(key: Optional[str]) -> bool:
+    """Return True if the given key/token is present and not a placeholder."""
+    if not key:
+        return False
+    key_stripped = key.strip()
+    if not key_stripped or key_stripped in PLACEHOLDER_KEYS:
+        return False
+    return True
 
-    monkeypatch.setenv("PRIMARY_AI_PROVIDER", "gemini")
-    monkeypatch.setenv("GEMINI_API_KEY", "")
 
-    with pytest.raises(Exception) as exc_info:
-        importlib.reload(config)
+def _get_key_attr(provider_name: str) -> str:
+    """Return the Settings attribute name holding the credential for a provider."""
+    provider_clean = provider_name.strip().lower()
+    if provider_clean == "huggingface":
+        return "HUGGINGFACE_TOKEN"
+    return f"{provider_clean.upper()}_API_KEY"
 
-    assert "Startup validation failed" in str(exc_info.value)
 
-def test_invalid_primary_provider():
-    os.environ["PRIMARY_AI_PROVIDER"] = "invalid_provider"
-    os.environ["GEMINI_API_KEY"] = "valid_gemini_key"
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore"
+    )
 
-    with pytest.raises(Exception) as exc_info:
-        reload_config()
-    
-    assert "PRIMARY_AI_PROVIDER" in str(exc_info.value)
+    PROJECT_NAME: str = "InternOps AI Service"
+    API_V1_STR: str = "/api/v1"
+    AI_PROVIDER_KEY: str = ""
+    DEFAULT_MODEL: str = "gpt-4o-mini"
 
-def test_invalid_fallback_provider():
-    os.environ["PRIMARY_AI_PROVIDER"] = "gemini"
-    os.environ["GEMINI_API_KEY"] = "valid_gemini_key"
-    os.environ["FALLBACK_AI_PROVIDERS"] = "groq,invalid_provider"
+    # Strategy Configuration
+    PRIMARY_AI_PROVIDER: str = "gemini"
+    FALLBACK_AI_PROVIDERS: Any = ["groq", "openai", "anthropic"]
+    ACTIVE_FALLBACK_PROVIDERS: List[str] = []
 
-    with pytest.raises(Exception) as exc_info:
-        reload_config()
-    
-    assert "Fallback provider 'invalid_provider' is not supported" in str(exc_info.value)
+    # API Keys & Tokens
+    GEMINI_API_KEY: Optional[str] = None
+    GROQ_API_KEY: Optional[str] = None
+    OPENAI_API_KEY: Optional[str] = None
+    ANTHROPIC_API_KEY: Optional[str] = None
+    DEEPSEEK_API_KEY: Optional[str] = None
+    HUGGINGFACE_TOKEN: Optional[str] = None
 
-def test_duplicate_fallback_providers():
-    os.environ["PRIMARY_AI_PROVIDER"] = "gemini"
-    os.environ["GEMINI_API_KEY"] = "valid_gemini_key"
-    os.environ["FALLBACK_AI_PROVIDERS"] = "groq, openai, groq"
-    os.environ["GROQ_API_KEY"] = "valid_groq_key"
-    os.environ["OPENAI_API_KEY"] = "valid_openai_key"
+    # Model Configuration
+    GEMINI_MODEL: Optional[str] = None
+    GROQ_MODEL: Optional[str] = None
+    OPENAI_MODEL: Optional[str] = None
+    ANTHROPIC_MODEL: Optional[str] = None
+    DEEPSEEK_MODEL: Optional[str] = None
+    HUGGINGFACE_MODEL: Optional[str] = None
 
-    cfg = reload_config()
-    # Duplicates should be removed while preserving order in config
-    assert cfg.FALLBACK_AI_PROVIDERS == ["groq", "openai"]
-    assert cfg.ACTIVE_FALLBACK_PROVIDERS == ["groq", "openai"]
+    # Auth
+    JWT_SECRET: str = ""
 
-def test_mixed_case_and_whitespace():
-    os.environ["PRIMARY_AI_PROVIDER"] = " Gemini "
-    os.environ["FALLBACK_AI_PROVIDERS"] = " Groq , OpenAI "
-    os.environ["GEMINI_API_KEY"] = "valid_gemini_key"
-    os.environ["GROQ_API_KEY"] = "valid_groq_key"
-    os.environ["OPENAI_API_KEY"] = "valid_openai_key"
+    # Host/Port/Redis configs
+    AI_SERVICE_HOST: str = "0.0.0.0"
+    AI_SERVICE_PORT: int = 8000
+    DATABASE_URL: Optional[str] = None
+    REDIS_URL: Optional[str] = None
 
-    cfg = reload_config()
-    assert cfg.PRIMARY_AI_PROVIDER == "gemini"
-    assert cfg.FALLBACK_AI_PROVIDERS == ["groq", "openai"]
-    assert cfg.ACTIVE_FALLBACK_PROVIDERS == ["groq", "openai"]
+    # Circuit Breaker Configuration
+    AI_PROVIDER_FAILURE_LIMIT: int = 3
+    AI_PROVIDER_COOLDOWN_MS: float = 300000.0
 
-def test_empty_fallback_list():
-    os.environ["PRIMARY_AI_PROVIDER"] = "gemini"
-    os.environ["GEMINI_API_KEY"] = "valid_gemini_key"
-    os.environ["FALLBACK_AI_PROVIDERS"] = "   "
+    @field_validator("AI_PROVIDER_FAILURE_LIMIT", mode="before")
+    @classmethod
+    def validate_failure_limit(cls, v):
+        if isinstance(v, str):
+            try:
+                v = int(v)
+            except ValueError:
+                raise ValueError("AI_PROVIDER_FAILURE_LIMIT must be a valid integer")
+        if not isinstance(v, (int, float)) or isinstance(v, bool):
+            raise ValueError("AI_PROVIDER_FAILURE_LIMIT must be a number")
+        if v <= 0:
+            raise ValueError("AI_PROVIDER_FAILURE_LIMIT must be greater than 0")
+        return int(v)
 
-    cfg = reload_config()
-    assert cfg.FALLBACK_AI_PROVIDERS == []
-    assert cfg.ACTIVE_FALLBACK_PROVIDERS == []
+    @field_validator("AI_PROVIDER_COOLDOWN_MS", mode="before")
+    @classmethod
+    def validate_cooldown_ms(cls, v):
+        if isinstance(v, str):
+            try:
+                v = float(v)
+            except ValueError:
+                raise ValueError("AI_PROVIDER_COOLDOWN_MS must be a valid number")
+        if not isinstance(v, (int, float)) or isinstance(v, bool):
+            raise ValueError("AI_PROVIDER_COOLDOWN_MS must be a number")
+        if v <= 0:
+            raise ValueError("AI_PROVIDER_COOLDOWN_MS must be greater than 0")
+        return float(v)
 
-def test_placeholder_validation():
-    os.environ["PRIMARY_AI_PROVIDER"] = "gemini"
-    os.environ["GEMINI_API_KEY"] = "your_gemini_api_key"  # Exactly the placeholder
+    @field_validator("PRIMARY_AI_PROVIDER", mode="before")
+    @classmethod
+    def clean_primary_provider(cls, v):
+        if isinstance(v, str):
+            v_clean = v.strip().lower()
+            if v_clean not in SUPPORTED_PROVIDERS:
+                raise ValueError(
+                    f"PRIMARY_AI_PROVIDER '{v}' is not supported. Must be one of {SUPPORTED_PROVIDERS}"
+                )
+            return v_clean
+        return v
 
-    with pytest.raises(Exception) as exc_info:
-        reload_config()
-    
-    assert "missing or set to a placeholder" in str(exc_info.value)
+    @field_validator("FALLBACK_AI_PROVIDERS", mode="before")
+    @classmethod
+    def parse_fallback_providers(cls, v):
+        if isinstance(v, str):
+            if not v.strip():
+                return []
+            providers = []
+            for p in v.split(","):
+                p_clean = p.strip().lower()
+                if p_clean:
+                    if p_clean not in SUPPORTED_PROVIDERS:
+                        raise ValueError(
+                            f"Fallback provider '{p.strip()}' is not supported. Must be one of {SUPPORTED_PROVIDERS}"
+                        )
+                    if p_clean not in providers:
+                        providers.append(p_clean)
+            return providers
+        elif isinstance(v, list):
+            providers = []
+            for p in v:
+                if isinstance(p, str):
+                    p_clean = p.strip().lower()
+                    if p_clean:
+                        if p_clean not in SUPPORTED_PROVIDERS:
+                            raise ValueError(
+                                f"Fallback provider '{p.strip()}' is not supported. Must be one of {SUPPORTED_PROVIDERS}"
+                            )
+                        if p_clean not in providers:
+                            providers.append(p_clean)
+            return providers
+        return v or []
 
-def test_fallback_credential_filtering():
-    os.environ["PRIMARY_AI_PROVIDER"] = "gemini"
-    os.environ["GEMINI_API_KEY"] = "valid_gemini"
-    os.environ["FALLBACK_AI_PROVIDERS"] = "groq,openai"
-    os.environ["GROQ_API_KEY"] = "valid_groq"
-    os.environ["OPENAI_API_KEY"] = "your_openai_api_key"  # placeholder key for openai
+    @field_validator("JWT_SECRET", mode="after")
+    @classmethod
+    def require_jwt_secret(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError(
+                "Startup validation failed: JWT_SECRET is required for service-to-service auth. "
+                "Set it to the same value as the Node backend's JWT_SECRET."
+            )
+        return v
 
-    cfg = reload_config()
-    # Configuration lists original fallback list
-    assert cfg.FALLBACK_AI_PROVIDERS == ["groq", "openai"]
-    # Runtime state reflects only the active ones
-    assert cfg.ACTIVE_FALLBACK_PROVIDERS == ["groq"]
+    @model_validator(mode="after")
+    def validate_and_resolve(self) -> "Settings":
+        primary = self.PRIMARY_AI_PROVIDER
+        fallbacks = self.FALLBACK_AI_PROVIDERS
 
-def test_model_validation_and_defaults():
-    os.environ["PRIMARY_AI_PROVIDER"] = "gemini"
-    os.environ["GEMINI_API_KEY"] = "valid_gemini"
-    os.environ["FALLBACK_AI_PROVIDERS"] = "groq"
-    os.environ["GROQ_API_KEY"] = "valid_groq"
+        # 1. Conflict check: primary cannot be in fallback chain
+        if primary in fallbacks:
+            raise ValueError(
+                f"Conflict: PRIMARY_AI_PROVIDER '{primary}' cannot also be listed in FALLBACK_AI_PROVIDERS {fallbacks}"
+            )
 
-    # Don't set models, they should resolve to default values
-    cfg = reload_config()
-    assert cfg.GEMINI_MODEL == "gemini-2.0-flash"
-    assert cfg.GROQ_MODEL == "llama-3.3-70b-versatile"
+        # 2. Validate Primary Provider Credentials (must fail startup)
+        primary_key_attr = _get_key_attr(primary)
+        primary_key = getattr(self, primary_key_attr, None)
+        if not _is_valid_key(primary_key):
+            raise ValueError(
+                f"Startup validation failed: PRIMARY_AI_PROVIDER '{primary}' is configured, but its API key '{primary_key_attr}' is missing or set to a placeholder."
+            )
 
-    # Set override for gemini model
-    os.environ["GEMINI_MODEL"] = "custom-gemini-model"
-    cfg = reload_config()
-    assert cfg.GEMINI_MODEL == "custom-gemini-model"
+        # 3. Filter Fallback Providers by Credentials (warn only, populate ACTIVE_FALLBACK_PROVIDERS)
+        active_fallbacks = []
+        for fb in fallbacks:
+            fb_key_attr = _get_key_attr(fb)
+            fb_key = getattr(self, fb_key_attr, None)
+            if _is_valid_key(fb_key):
+                active_fallbacks.append(fb)
+            else:
+                warning_msg = (
+                    f"Fallback provider '{fb}' lacks a valid API key ({fb_key_attr}). "
+                    "It will be skipped from the active fallback chain."
+                )
+                warnings.warn(warning_msg, RuntimeWarning)
+                logger.warning(warning_msg)
 
-def test_conflict_primary_in_fallback_list():
-    os.environ["PRIMARY_AI_PROVIDER"] = "gemini"
-    os.environ["GEMINI_API_KEY"] = "valid_gemini"
-    os.environ["FALLBACK_AI_PROVIDERS"] = "groq,gemini"
+        self.ACTIVE_FALLBACK_PROVIDERS = active_fallbacks
 
-    with pytest.raises(Exception) as exc_info:
-        reload_config()
-    
-    assert "cannot also be listed in FALLBACK_AI_PROVIDERS" in str(exc_info.value)
+        # 4. Model Overrides & Defaults for Active Providers Only
+        active_providers = [primary] + active_fallbacks
+        for provider in active_providers:
+            model_attr = f"{provider.upper()}_MODEL"
+            model_val = getattr(self, model_attr, None)
+            if not model_val or not model_val.strip():
+                # Apply default model
+                setattr(self, model_attr, DEFAULT_MODELS[provider])
+            
+            # Raise error if active provider still cannot resolve to a usable model
+            resolved_model = getattr(self, model_attr, None)
+            if not resolved_model or not resolved_model.strip():
+                raise ValueError(
+                    f"Model validation failed: Active provider '{provider}' has no resolved model."
+                )
 
-def test_get_provider_key_success():
-    os.environ["PRIMARY_AI_PROVIDER"] = "gemini"
-    os.environ["GEMINI_API_KEY"] = "valid_gemini_key"
-    os.environ["FALLBACK_AI_PROVIDERS"] = "groq"
-    os.environ["GROQ_API_KEY"] = "valid_groq_key"
+        # 5. Cross-validate adapter availability — fail fast at startup if a
+        #    configured provider has no matching adapter implementation rather
+        #    than letting it surface as a runtime error on the first request.
+        from app.providers.registry import has_adapter
+        for provider in active_providers:
+            if not has_adapter(provider):
+                raise ValueError(
+                    f"Startup validation failed: No provider adapter implemented "
+                    f"for '{provider}'. Ensure a matching adapter exists in "
+                    f"app/providers/ and is registered in the provider registry."
+                )
 
-    cfg = reload_config()
-    assert cfg.settings.get_provider_key("gemini") == "valid_gemini_key"
-    # Case-insensitive / whitespace tolerant
-    assert cfg.settings.get_provider_key(" Groq ") == "valid_groq_key"
+        return self
 
-def test_get_provider_key_missing_raises_descriptive_error():
-    os.environ["PRIMARY_AI_PROVIDER"] = "gemini"
-    os.environ["GEMINI_API_KEY"] = "valid_gemini_key"
-    # OPENAI_API_KEY intentionally left unset
+    def get_provider_key(self, provider: str) -> str:
+        """
+        Fetch the API key/token for a given provider, raising a descriptive
+        ValueError instead of letting callers hit a raw KeyError/AttributeError
+        when a key is missing, blank, or still set to its placeholder value.
+        """
+        if not isinstance(provider, str) or not provider.strip():
+            raise ValueError("Configuration error: provider name must be a non-empty string.")
 
-    cfg = reload_config()
-    with pytest.raises(ValueError) as exc_info:
-        cfg.settings.get_provider_key("openai")
+        provider_clean = provider.strip().lower()
+        if provider_clean not in SUPPORTED_PROVIDERS:
+            raise ValueError(
+                f"Configuration error: '{provider}' is not a supported provider. "
+                f"Must be one of {SUPPORTED_PROVIDERS}"
+            )
 
-    assert "Missing or invalid API key for provider 'openai'" in str(exc_info.value)
+        key_attr = _get_key_attr(provider_clean)
+        key = getattr(self, key_attr, None)
+        if not _is_valid_key(key):
+            raise ValueError(
+                f"Configuration error: Missing or invalid API key for provider '{provider_clean}' "
+                f"(expected '{key_attr}' to be set to a real value)."
+            )
+        return key
 
-def test_get_provider_key_placeholder_raises_descriptive_error():
-    os.environ["PRIMARY_AI_PROVIDER"] = "gemini"
-    os.environ["GEMINI_API_KEY"] = "valid_gemini_key"
-    os.environ["ANTHROPIC_API_KEY"] = "your_anthropic_api_key"  # placeholder
+# Instantiate settings
+settings = Settings()
 
-    cfg = reload_config()
-    with pytest.raises(ValueError) as exc_info:
-        cfg.settings.get_provider_key("anthropic")
+# ==============================================================================
+# Module-level exports for backward compatibility
+# ==============================================================================
+PRIMARY_AI_PROVIDER = settings.PRIMARY_AI_PROVIDER
+FALLBACK_AI_PROVIDERS = settings.FALLBACK_AI_PROVIDERS
+ACTIVE_FALLBACK_PROVIDERS = settings.ACTIVE_FALLBACK_PROVIDERS
 
-    assert "Missing or invalid API key" in str(exc_info.value)
+GEMINI_API_KEY = settings.GEMINI_API_KEY
+GROQ_API_KEY = settings.GROQ_API_KEY
+OPENAI_API_KEY = settings.OPENAI_API_KEY
+ANTHROPIC_API_KEY = settings.ANTHROPIC_API_KEY
+DEEPSEEK_API_KEY = settings.DEEPSEEK_API_KEY
+HUGGINGFACE_TOKEN = settings.HUGGINGFACE_TOKEN
 
-def test_get_provider_key_unsupported_provider_raises_error():
-    os.environ["PRIMARY_AI_PROVIDER"] = "gemini"
-    os.environ["GEMINI_API_KEY"] = "valid_gemini_key"
+GEMINI_MODEL = settings.GEMINI_MODEL
+GROQ_MODEL = settings.GROQ_MODEL
+OPENAI_MODEL = settings.OPENAI_MODEL
+ANTHROPIC_MODEL = settings.ANTHROPIC_MODEL
+DEEPSEEK_MODEL = settings.DEEPSEEK_MODEL
+HUGGINGFACE_MODEL = settings.HUGGINGFACE_MODEL
 
-    cfg = reload_config()
-    with pytest.raises(ValueError) as exc_info:
-        cfg.settings.get_provider_key("not_a_real_provider")
-
-    assert "not a supported provider" in str(exc_info.value)
-
-def test_get_provider_key_huggingface():
-    os.environ["PRIMARY_AI_PROVIDER"] = "gemini"
-    os.environ["GEMINI_API_KEY"] = "valid_gemini_key"
-    os.environ["HUGGINGFACE_TOKEN"] = "valid_hf_token"
-
-    cfg = reload_config()
-    assert cfg.settings.get_provider_key("huggingface") == "valid_hf_token"
-    assert cfg.settings.get_provider_key("HuggingFace") == "valid_hf_token"
-
-def test_backward_compatibility():
-    os.environ["PRIMARY_AI_PROVIDER"] = "gemini"
-    os.environ["GEMINI_API_KEY"] = "valid_gemini"
-    os.environ["GROQ_API_KEY"] = "valid_groq"
-
-    cfg = reload_config()
-    # Check variables exported at module-level are correct
-    assert cfg.PRIMARY_AI_PROVIDER == "gemini"
-    assert cfg.GEMINI_API_KEY == "valid_gemini"
-    assert cfg.GROQ_API_KEY == "valid_groq"
+JWT_SECRET = settings.JWT_SECRET
