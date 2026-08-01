@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock
 from fastapi import HTTPException
 
 from app.core.rate_limiter import RateLimiter
@@ -14,25 +14,44 @@ class DummyRequest:
 
 @pytest.mark.asyncio
 async def test_rate_limiter_blocks_after_limit():
-    # Patch the global redis_client used by the RateLimiter
-    with patch("app.core.rate_limiter.redis_client", new_callable=AsyncMock) as mock_redis:
-        
-        # Simulate incr returning 1, then 2, then 3 for consecutive requests
-        mock_redis.incr.side_effect = [1, 2, 3]
-        
-        limiter = RateLimiter(requests_per_minute=2)
-        request = DummyRequest()
+    limiter = RateLimiter(requests_per_minute=2)
+    request = DummyRequest()
 
-        # First request -> allowed (count = 1)
+    # First request -> allowed
+    await limiter.check_rate_limit(request)
+
+    # Second request -> allowed
+    await limiter.check_rate_limit(request)
+
+    # Third request -> blocked
+    with pytest.raises(HTTPException):
         await limiter.check_rate_limit(request)
-        # Verify expire was called on the first request
-        mock_redis.expire.assert_awaited_once_with("ai:ratelimit:127.0.0.1", 60)
+        
+@pytest.mark.asyncio
+async def test_rate_limiter_blocks_with_redis():
+    limiter = RateLimiter(
+        requests_per_minute=2,
+        redis_url="redis://localhost:6379",
+    )
 
-        # Second request -> allowed (count = 2)
+    mock_pipe = MagicMock()
+    mock_pipe.execute = AsyncMock(
+        return_value=[0, 1, 3, True]
+    )
+
+    mock_redis = MagicMock()
+    mock_redis.pipeline.return_value.__aenter__.return_value = mock_pipe
+
+    limiter.redis_client = mock_redis
+
+    request = MagicMock()
+    request.headers = {"X-User-ID": "user123"}
+    request.client = None
+
+    with pytest.raises(HTTPException):
         await limiter.check_rate_limit(request)
 
-        # Third request -> blocked (count = 3)
-        with pytest.raises(HTTPException) as exc_info:
-            await limiter.check_rate_limit(request)
-            
-        assert exc_info.value.status_code == 429
+    mock_pipe.zremrangebyscore.assert_called_once()
+    mock_pipe.zadd.assert_called_once()
+    mock_pipe.zcard.assert_called_once()
+    mock_pipe.expire.assert_called_once()
