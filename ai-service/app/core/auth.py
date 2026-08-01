@@ -2,7 +2,7 @@
 Auth dependency — JWT verification.
 
 Verifies the same HS256 JWT that the Node backend issues.
-The token must be passed as: Authorization: Bearer <token>
+The token must be passed as:  Authorization: Bearer <token>
 
 Replaces the previous stub that trusted an un-verified x-user-id header.
 """
