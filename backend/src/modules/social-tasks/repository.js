@@ -120,8 +120,6 @@ async function getTasks(filters, userId, userRole, page = 1, limit = 50) {
     where.push(`st.deadline <= $${params.length}`);
   }
 
-<<<<<<< HEAD
-=======
   if (filters.department_id) {
     params.push(filters.department_id);
     where.push(
@@ -136,7 +134,6 @@ async function getTasks(filters, userId, userRole, page = 1, limit = 50) {
     );
   }
 
->>>>>>> upstream/master
   if (filters.source) {
     params.push(filters.source);
     where.push(`st.source = $${params.length}`);

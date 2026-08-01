@@ -146,24 +146,6 @@ module.exports = async function socialTasksRoutes(fastify) {
         resourceId: task.id,
         details: { title: task.title },
       };
-<<<<<<< HEAD
-      try {
-        const creatorEmail = await repo.getUserEmail(req.user.id);
-        if (creatorEmail) {
-          await emailService.sendNotification(creatorEmail, {
-            title: 'Task Created',
-            message: `Task "${task.title}" has been created successfully.`,
-            recipient: req.user.id,
-          });
-        }
-      } catch (emailErr) {
-        req.log.warn(
-          { emailErr },
-          'Task created but notification email failed'
-        );
-      }
-      notifyAllInternsAsync(task, req.log);
-=======
       void (async () => {
         try {
           const creatorEmail = await repo.getUserEmail(req.user.id);
@@ -185,7 +167,6 @@ module.exports = async function socialTasksRoutes(fastify) {
 
       void notifyAllInternsAsync(task, req.log);
 
->>>>>>> upstream/master
       return task;
     }
   );
@@ -329,12 +310,9 @@ module.exports = async function socialTasksRoutes(fastify) {
             deadlineBefore: {
               type: 'string',
             },
-<<<<<<< HEAD
-=======
             department_id: {
               type: 'string',
             },
->>>>>>> upstream/master
             source: {
               type: 'string',
               enum: ['manual', 'github'],

@@ -1,24 +1,6 @@
 // Basic input sanitization for common injection patterns
 const sanitizeHtml = require('sanitize-html');
 
-<<<<<<< HEAD
-// Fields that must never be mutated, regardless of any allowlist —
-// auth/token logic depends on exact, byte-for-byte string matching
-// (bcrypt comparison, token validation). Sanitizing these would
-// silently break login for any user whose password/token contains
-// characters treated specially by sanitize-html.
-const SENSITIVE_FIELDS = new Set([
-  'password',
-  'oldPassword',
-  'newPassword',
-  'confirmPassword',
-  'token',
-  'resetToken',
-  'refreshToken',
-  '_csrf',
-]);
-
-=======
 const EXCLUDED_FIELDS = new Set([
   'password',
   'oldpassword',
@@ -100,7 +82,6 @@ function isExcludedField(key) {
   return false;
 }
 
->>>>>>> upstream/master
 function isPlainObject(val) {
   return Object.prototype.toString.call(val) === '[object Object]';
 }
@@ -117,11 +98,7 @@ function sanitizeInput(obj, excludedFields = [], depth = 0) {
           allowedTags: [],
           allowedAttributes: {},
         });
-<<<<<<< HEAD
-      } else if (isPlainObject(val) || Array.isArray(val)) {
-=======
       } else if (val && typeof val === 'object') {
->>>>>>> upstream/master
         sanitizeInput(val, excludedFields, depth + 1);
       }
     }
@@ -131,15 +108,11 @@ function sanitizeInput(obj, excludedFields = [], depth = 0) {
   if (!isPlainObject(obj)) return;
 
   for (const key of Object.keys(obj)) {
-<<<<<<< HEAD
-    if (SENSITIVE_FIELDS.has(key) || excludedFields.includes(key)) {
-=======
     if (
       SENSITIVE_FIELDS.has(key) ||
       isExcludedField(key) ||
       excludedFields.includes(key)
     ) {
->>>>>>> upstream/master
       continue;
     }
 
@@ -150,34 +123,13 @@ function sanitizeInput(obj, excludedFields = [], depth = 0) {
         allowedTags: [],
         allowedAttributes: {},
       });
-<<<<<<< HEAD
-    } else if (isPlainObject(val) || Array.isArray(val)) {
-=======
     } else if (val && typeof val === 'object') {
->>>>>>> upstream/master
       sanitizeInput(val, excludedFields, depth + 1);
     }
   }
 }
 
 function sanitizationMiddleware(request, reply, done) {
-<<<<<<< HEAD
-  // Previously an allowlist (SAFE_FIELDS) — meant any field NOT in this
-  // list (email, bio, etc.) was never sanitized at all. Now empty, so
-  // every field is sanitized by default except SENSITIVE_FIELDS above.
-  const EXCLUDED_FIELDS = [];
-
-  if (request.body) {
-    sanitizeInput(request.body, EXCLUDED_FIELDS);
-  }
-
-  if (request.query) {
-    sanitizeInput(request.query, EXCLUDED_FIELDS);
-  }
-
-  if (request.params) {
-    sanitizeInput(request.params, EXCLUDED_FIELDS);
-=======
   const SAFE_FIELDS = [
     'name',
     'description',
@@ -202,7 +154,6 @@ function sanitizationMiddleware(request, reply, done) {
 
   if (request.params) {
     sanitizeInput(request.params, EXCLUDED_FIELDS_PARAM);
->>>>>>> upstream/master
   }
 
   done();

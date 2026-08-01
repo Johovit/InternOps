@@ -118,11 +118,6 @@ async function deleteTemplate(id) {
 
 async function createCertificate(data, userId) {
   const res = await pool.query(
-<<<<<<< HEAD
-    `INSERT INTO certificates (template_id, recipient_name, recipient_email, title, body, issuer, issue_date, expiry_date, certificate_type, status, metadata, created_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-     RETURNING *`,
-=======
     `
     INSERT INTO certificates (
       template_id,
@@ -148,7 +143,6 @@ async function createCertificate(data, userId) {
     )
     RETURNING *
     `,
->>>>>>> upstream/master
     [
       data.template_id || null,
       data.recipient_name,
@@ -160,13 +154,10 @@ async function createCertificate(data, userId) {
       data.expiry_date || null,
       data.certificate_type || 'achievement',
       data.status || 'draft',
-<<<<<<< HEAD
-=======
       data.pdf_path || null,
       data.qr_code_url || null,
       data.verification_token,
       data.canva_design_id || null,
->>>>>>> upstream/master
       JSON.stringify(data.metadata || {}),
       userId,
     ]

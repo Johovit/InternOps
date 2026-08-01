@@ -28,11 +28,7 @@ import {
   GitPullRequest,
 } from 'lucide-react';
 
-<<<<<<< HEAD
-import { useState, useEffect, useRef } from 'react';
-=======
 import { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react';
->>>>>>> upstream/master
 import { useQuery } from '@tanstack/react-query';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import api from '../lib/axios';

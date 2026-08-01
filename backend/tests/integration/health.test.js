@@ -37,10 +37,6 @@ describe('Health Check Integration Tests', () => {
         method: 'GET',
         url: '/health/detailed',
       });
-<<<<<<< HEAD
-
-      expect([401, 403]).toContain(res.statusCode);
-=======
 
       expect([401, 403]).toContain(res.statusCode);
     });
@@ -59,7 +55,6 @@ describe('Health Check Integration Tests', () => {
         .on('error', (err) => {
           done(err);
         });
->>>>>>> upstream/master
     });
   });
 });

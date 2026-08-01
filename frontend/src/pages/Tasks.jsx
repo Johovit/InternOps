@@ -16,12 +16,9 @@ import {
   X,
   Trash2,
   Pencil,
-<<<<<<< HEAD
-=======
   Building2,
   CalendarCheck,
   Star,
->>>>>>> upstream/master
   GitPullRequest as GithubIcon,
 } from 'lucide-react';
 import api from '../lib/axios';
@@ -41,10 +38,7 @@ const PLATFORM_ICON = {
 const overdue = (d) => new Date(d) < new Date();
 
 export default function Tasks() {
-<<<<<<< HEAD
-=======
   const { deptId } = useParams();
->>>>>>> upstream/master
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
@@ -94,11 +88,6 @@ export default function Tasks() {
     user?.role
   );
 
-<<<<<<< HEAD
-  const { data: tasks, isLoading } = useQuery({
-    queryKey: ['tasks'],
-    queryFn: () => api.get('/tasks').then((res) => res.data),
-=======
   const { data: departments = [] } = useQuery({
     queryKey: ['departments'],
     queryFn: () => api.get('/departments').then((res) => res.data),
@@ -115,7 +104,6 @@ export default function Tasks() {
           params: { department_id: activeDeptId || undefined },
         })
         .then((res) => res.data),
->>>>>>> upstream/master
   });
 
   const { data: proofs, refetch: refetchProofs } = useQuery({
@@ -948,39 +936,6 @@ export default function Tasks() {
                             >
                               {p.status}
                             </Badge>
-<<<<<<< HEAD
-
-                            <p className="text-slate-500 dark:text-slate-400 mt-2 truncate w-full">
-                              Intern:{' '}
-                              {p.intern_name ||
-                                p.intern_email ||
-                                `${p.intern_id.slice(0, 8)}…`}
-                            </p>
-                          </div>
-
-                          <div className="flex flex-wrap items-center gap-2 shrink-0 w-full md:w-auto mt-2 md:mt-0 md:ml-auto">
-                            {canVerify && p.status === 'PENDING' && (
-                              <Btn
-                                variant="success"
-                                className="rounded-2xl"
-                                onClick={() =>
-                                  verifyMutation.mutate({
-                                    proofId: p.id,
-                                    taskId: t.id,
-                                  })
-                                }
-                                disabled={verifyMutation.isPending}
-                              >
-                                <span className="flex items-center gap-1">
-                                  <CheckCircle className="w-4 h-4" />
-                                  {verifyMutation.isPending
-                                    ? 'Verifying...'
-                                    : 'Verify'}
-                                </span>
-                              </Btn>
-                            )}
-
-=======
 
                             <div
                               className="flex flex-wrap items-center gap-1.5 mt-2"
@@ -1037,7 +992,6 @@ export default function Tasks() {
                               </Btn>
                             )}
 
->>>>>>> upstream/master
                             {user?.role === 'ADMIN' &&
                               (deletingProofId === p.id ? (
                                 <div className="flex items-center gap-2 animate-fade-in">
