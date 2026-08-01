@@ -111,7 +111,7 @@ async function getTasks(filters, userId, userRole, page = 1, limit = 50) {
          NOT EXISTS (SELECT 1 FROM task_assignments WHERE task_id = st.id AND deleted_at IS NULL)
          OR st.id IN (SELECT task_id FROM task_assignments WHERE user_id = $${params.length} AND deleted_at IS NULL)
          OR st.created_by = $${params.length}
-       )`
+      )`
     );
   }
 
@@ -136,7 +136,7 @@ async function getTasks(filters, userId, userRole, page = 1, limit = 50) {
            JOIN users u ON u.id = ta.user_id 
            WHERE u.department_id = $${pIdx}::uuid AND ta.deleted_at IS NULL
          )
-       )`
+      )`
     );
   }
 

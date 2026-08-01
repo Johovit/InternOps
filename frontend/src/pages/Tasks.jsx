@@ -241,7 +241,6 @@ export default function Tasks({
       showNotification(errorMsg);
     },
     onSettled: () => {
-      // Always restore the Delete button after success or failure.
       setDeletingProofId(null);
     },
   });
@@ -290,7 +289,7 @@ export default function Tasks({
       showNotification(
         'You can only upload up to 5 images at a time. Only the first 5 images were kept.'
       );
-      files = files.slice(0, 5); // Take max 5 files
+      files = files.slice(0, 5);
     }
 
     for (const file of files) {

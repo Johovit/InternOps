@@ -51,6 +51,7 @@ module.exports = async function ratingsRoutes(fastify) {
         score,
         remarks || null
       );
+
       req.auditOnResponse = {
         userId: req.user.id,
         ...extractRequestInfo(req),
@@ -59,10 +60,12 @@ module.exports = async function ratingsRoutes(fastify) {
         resourceId: rating.id,
         details: { target: rated_user_id, score },
       };
+
       await sendNotification(
         rated_user_id,
         `You received a new rating: ${score}/10.`
       ).catch(() => {});
+
       await notifyUser(rating.rated_user_id, 'rating-received', {
         rating,
       }).catch(() => {});
@@ -105,7 +108,6 @@ module.exports = async function ratingsRoutes(fastify) {
           userId: z.string().uuid(),
         })
         .parse(req.params);
-
       try {
         return await overallService.generateOverallSummary(userId);
       } catch (error) {

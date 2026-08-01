@@ -128,8 +128,6 @@ export default function Ratings({
     })),
   ];
 
-  const effectiveTeam = isProjectView ? roster : team;
-
   const filteredTeam = isProjectView
     ? roster
     : team.filter((m) => !activeDeptId || m.department_id === activeDeptId);
