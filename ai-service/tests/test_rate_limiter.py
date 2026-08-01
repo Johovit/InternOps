@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, patch
 from fastapi import HTTPException
 
 from app.core.rate_limiter import RateLimiter
@@ -14,6 +14,7 @@ class DummyRequest:
 
 @pytest.mark.asyncio
 async def test_rate_limiter_blocks_after_limit():
+    """Test the in-memory fallback logic"""
     limiter = RateLimiter(requests_per_minute=2)
     request = DummyRequest()
 
@@ -26,32 +27,19 @@ async def test_rate_limiter_blocks_after_limit():
     # Third request -> blocked
     with pytest.raises(HTTPException):
         await limiter.check_rate_limit(request)
-        
+
 @pytest.mark.asyncio
-async def test_rate_limiter_blocks_with_redis():
-    limiter = RateLimiter(
-        requests_per_minute=2,
-        redis_url="redis://localhost:6379",
-    )
+@patch("app.core.rate_limiter.redis_client", new_callable=AsyncMock)
+async def test_rate_limiter_blocks_with_redis(mock_redis):
+    """Test the Redis fixed-window logic"""
+    limiter = RateLimiter(requests_per_minute=2)
+    request = DummyRequest()
 
-    mock_pipe = MagicMock()
-    mock_pipe.execute = AsyncMock(
-        return_value=[0, 1, 3, True]
-    )
-
-    mock_redis = MagicMock()
-    mock_redis.pipeline.return_value.__aenter__.return_value = mock_pipe
-
-    limiter.redis_client = mock_redis
-
-    request = MagicMock()
-    request.headers = {"X-User-ID": "user123"}
-    request.client = None
+    # Make the mock Redis pretend the counter is at 3 (over the limit of 2)
+    mock_redis.incr.return_value = 3
 
     with pytest.raises(HTTPException):
         await limiter.check_rate_limit(request)
 
-    mock_pipe.zremrangebyscore.assert_called_once()
-    mock_pipe.zadd.assert_called_once()
-    mock_pipe.zcard.assert_called_once()
-    mock_pipe.expire.assert_called_once()
+    # Verify that the new code's correct Redis method was called
+    mock_redis.incr.assert_called_once()
