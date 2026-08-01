@@ -10,7 +10,7 @@ Replaces the previous stub that trusted an un-verified x-user-id header.
 from typing import List, Optional
 
 import jwt
-from fastapi import Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status
 from pydantic import BaseModel
 
 from app.core.config import settings
