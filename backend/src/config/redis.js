@@ -47,12 +47,6 @@ function scheduleReconnect() {
     reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY);
   }, reconnectDelay).unref();
 }
-function scheduleReconnect() {
-  setTimeout(() => {
-    clientPromise = null;
-    reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY);
-  }, reconnectDelay).unref();
-}
 
 async function getRedisClient() {
   if (process.env.NODE_ENV === 'test') return null;
@@ -96,8 +90,6 @@ async function getRedisClient() {
         listenersAttached = true;
       }
 
-        listenersAttached = true;
-      }
       await c.connect();
 
       client = c;
@@ -122,6 +114,7 @@ async function getRedisClient() {
       clientPromise = null;
       listenersAttached = false;
       redisConnected = false;
+
       scheduleReconnect();
 
       return null;

@@ -391,22 +391,22 @@ export default function Tasks({
               </p>
             </div>
           </div>
-        </div>
 
-        {canCreateTask && (
-          <Btn onClick={() => setShowForm((s) => !s)}>
-            {showForm ? (
-              <span className="flex items-center gap-1">
-                <X className="w-4 h-4" /> Cancel
-              </span>
-            ) : (
-              <span className="flex items-center gap-1">
-                <Plus className="w-4 h-4" /> Create task
-              </span>
-            )}
-          </Btn>
-        )}
-      </div>
+          {canCreateTask && (
+            <Btn onClick={() => setShowForm((s) => !s)}>
+              {showForm ? (
+                <span className="flex items-center gap-1">
+                  <X className="w-4 h-4" /> Cancel
+                </span>
+              ) : (
+                <span className="flex items-center gap-1">
+                  <Plus className="w-4 h-4" /> Create task
+                </span>
+              )}
+            </Btn>
+          )}
+        </div>
+      )}
 
       {showForm && canCreateTask && (
         <div className="mb-5 animate-fade-in-up">
