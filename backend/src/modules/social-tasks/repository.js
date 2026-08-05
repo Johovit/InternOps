@@ -111,13 +111,33 @@ async function getTasks(filters, userId, userRole, page = 1, limit = 50) {
          NOT EXISTS (SELECT 1 FROM task_assignments WHERE task_id = st.id AND deleted_at IS NULL)
          OR st.id IN (SELECT task_id FROM task_assignments WHERE user_id = $${params.length} AND deleted_at IS NULL)
          OR st.created_by = $${params.length}
-       )`
+      )`
     );
   }
 
   if (filters.deadlineBefore) {
     params.push(filters.deadlineBefore);
     where.push(`st.deadline <= $${params.length}`);
+  }
+
+  if (
+    filters.department_id &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      filters.department_id
+    )
+  ) {
+    params.push(filters.department_id);
+    const pIdx = params.length;
+    where.push(
+      `(
+         st.created_by IN (SELECT id FROM users WHERE department_id = $${pIdx}::uuid AND deleted_at IS NULL)
+         OR st.id IN (
+           SELECT ta.task_id FROM task_assignments ta 
+           JOIN users u ON u.id = ta.user_id 
+           WHERE u.department_id = $${pIdx}::uuid AND ta.deleted_at IS NULL
+         )
+      )`
+    );
   }
 
   if (filters.source) {
