@@ -101,7 +101,7 @@ app.get(
 app.get(
   '/health/detailed',
   {
-    preHandler: [authenticate, rbac('ADMIN')],
+    preHandler: [auth, rbac('ADMIN')],
     config: {
       rateLimit: false,
     },
