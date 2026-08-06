@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 import logging
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.core.database import get_pool, close_pool
@@ -10,6 +11,7 @@ from app.core.redis_client import connect_redis, disconnect_redis
 from app.api.ai_routes import router as ai_router
 from app.api.v1.endpoints.health import router as health_router
 from app.api.v1.endpoints.certificates import router as certificates_router
+
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +38,14 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title=settings.PROJECT_NAME,
     lifespan=lifespan,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-User-ID"],
 )
 
 

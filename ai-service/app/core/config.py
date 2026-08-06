@@ -103,6 +103,11 @@ class Settings(BaseSettings):
     AI_PROVIDER_FAILURE_LIMIT: int = 3
     AI_PROVIDER_COOLDOWN_MS: float = 300000.0
 
+    CORS_ORIGINS: Any = [
+        "http://localhost:5173",
+        "http://localhost:3000",
+    ]
+
     @field_validator("AI_PROVIDER_FAILURE_LIMIT", mode="before")
     @classmethod
     def validate_failure_limit(cls, v):
@@ -184,6 +189,18 @@ class Settings(BaseSettings):
                 "Set it to the same value as the Node backend's JWT_SECRET."
             )
         return v
+
+    @field_validator("CORS_ORIGINS", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, value):
+        if isinstance(value, str):
+            return [
+                origin.strip()
+                for origin in value.split(",")
+                if origin.strip()
+            ]
+
+        return value
 
     @model_validator(mode="after")
     def validate_and_resolve(self) -> "Settings":
