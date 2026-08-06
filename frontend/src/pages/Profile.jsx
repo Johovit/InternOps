@@ -73,34 +73,26 @@ export default function Profile() {
     setTimeout(() => setMessage(''), 2500);
   };
   const validateProfile = () => {
-  const name = full_name.trim();
-  if (!/^[A-Za-z ]+$/.test(name)) {
-    setNameError('Name can only contain letters and spaces.');
-    return false;
-  }
-  if (name.length < 3) {
-    setNameError('Name must be at least 3 characters.');
-    return false;
-  }
+    const name = full_name.trim();
+    // Length validation
+    if (name.length < 3 || name.length > 100) {
+      setNameError('Name must be between 3 and 100 characters.');
+      return false;
+    }
+    // Allow international letters, combining marks,
+    // spaces, apostrophes and hyphens
+    const nameRegex = /^[\p{L}\p{M}\s'-]+$/u;
 
-  if (name.length > 50) {
-    setNameError('Name must not exceed 50 characters.');
-    return false;
-  }
+    if (!nameRegex.test(name)) {
+      setNameError('Name contains invalid characters.');
+      return false;
+    }
 
-  // 1. Length Check (Fixes Issue #1480)
-  if (name.length < 3 || name.length > 100) {
-    setNameError('Name must be between 3 and 100 characters.');
-    return false;
-  }
-
-  // 2. Prevent Wasteful Round-trips (Fixes Issue #1107 safely)
-  if (/[<>]/test(name)) {
-    setNameError('Name contains invalid characters.');
-    return false;
-  }
-
-
+    // Block dangerous HTML characters
+    if (/[<>]/.test(name)) {
+      setNameError('Name contains invalid characters.');
+      return false;
+    }
     setNameError('');
     return true;
   };
