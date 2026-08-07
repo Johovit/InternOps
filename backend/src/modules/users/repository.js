@@ -1,5 +1,13 @@
 ﻿const pool = require('../../config/db');
 
+const EDITABLE_USER_COLUMNS = new Set([
+  'full_name',
+  'email',
+  'role',
+  'department_id',
+  'manager_id',
+]);
+
 async function listUsersByRole(role) {
   return pool.query(
     'SELECT id,email,role,full_name,suspended FROM users WHERE deleted_at IS NULL AND role=$1',
@@ -88,6 +96,10 @@ async function updateUser(id, data) {
   const params = [];
 
   for (const [column, value] of Object.entries(data)) {
+    if (!EDITABLE_USER_COLUMNS.has(column)) {
+      throw new Error(`Unsupported user update field: ${column}`);
+    }
+
     params.push(value);
     fields.push(`${column} = $${params.length}`);
   }
