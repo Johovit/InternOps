@@ -3,6 +3,7 @@ const { LRUCache } = require('lru-cache');
 const { GoogleGenAI } = require('@google/genai');
 const config = require('../config');
 const { getRedisClient } = require('../config/redis');
+const { safeParseJSON } = require('../utils/promptCleaner');
 
 const failureState = new Map();
 
@@ -77,7 +78,10 @@ async function getCachedResponse(payload) {
     if (redis) {
       const cached = await redis.get(`ai:cache:${payload.userId}:${key}`);
       if (cached) {
-        return JSON.parse(cached);
+        const parsed = safeParseJSON(cached);
+        if (parsed) return parsed;
+
+        console.warn('[AI Cache] Ignoring invalid cached response');
       }
       return null;
     }
@@ -161,6 +165,17 @@ async function fetchWithTimeout(url, options = {}) {
 
   try {
     const response = await fetch(url, fetchOpts);
+
+    if (!response.ok) {
+      const error = new Error(`AI provider failed with status ${response.status}`);
+      error.code =
+        response.status >= 500
+          ? 'AI_PROVIDER_SERVER_ERROR'
+          : 'AI_PROVIDER_HTTP_ERROR';
+      error.statusCode = response.status;
+      throw error;
+    }
+
     // Reject oversized responses before buffering the body into memory.
     // Closes the stream-amplification OOM path
     const contentLength = response.headers.get('content-length');
@@ -171,6 +186,20 @@ async function fetchWithTimeout(url, options = {}) {
     }
 
     return response;
+  } catch (error) {
+    if (error?.name === 'AbortError' || error?.name === 'TimeoutError') {
+      const timeoutError = new Error(
+        `AI provider request timed out after ${timeout}ms`
+      );
+      timeoutError.code = 'AI_PROVIDER_TIMEOUT';
+      throw timeoutError;
+    }
+
+    if (error && !error.code) {
+      error.code = 'AI_PROVIDER_NETWORK_ERROR';
+    }
+
+    throw error;
   } finally {
     clearTimeout(timer);
   }
@@ -240,12 +269,13 @@ async function readResponseTextWithLimit(response) {
 
 async function parseJsonResponseWithLimit(response, providerName) {
   const text = await readResponseTextWithLimit(response);
+  const parsed = safeParseJSON(text);
 
-  try {
-    return JSON.parse(text);
-  } catch {
+  if (!parsed) {
     throw new Error(`${providerName} returned invalid JSON`);
   }
+
+  return parsed;
 }
 
 const MAX_MESSAGES = 32;
@@ -286,10 +316,6 @@ async function callOpenAICompatible({
       temperature: 0.3,
     }),
   });
-
-  if (!response.ok) {
-    throw new Error(`${name} failed with status ${response.status}`);
-  }
 
   const data = await parseJsonResponseWithLimit(response, name);
   const text = data.choices?.[0]?.message?.content;
@@ -370,10 +396,6 @@ async function callHuggingFace(messages) {
     }
   );
 
-  if (!response.ok) {
-    throw new Error(`huggingface failed with status ${response.status}`);
-  }
-
   const data = await parseJsonResponseWithLimit(response, 'huggingface');
 
   const text =
@@ -397,10 +419,6 @@ async function callFastAPI(messages) {
     },
     body: JSON.stringify({ messages }),
   });
-
-  if (!response.ok) {
-    throw new Error(`fastapi service failed with status ${response.status}`);
-  }
 
   const data = await parseJsonResponseWithLimit(response, 'fastapi');
   if (!data || !data.content) {
@@ -436,6 +454,20 @@ const providerRegistry = {
     call: callHuggingFace,
   },
 };
+
+function createFallbackResponse(errors) {
+  return {
+    provider: null,
+    content: 'AI service is temporarily unavailable. Please try again later.',
+    cached: false,
+    fallback: true,
+    error: {
+      code: 'AI_SERVICE_UNAVAILABLE',
+      message: 'All configured AI providers are unavailable.',
+      providers: errors,
+    },
+  };
+}
 
 async function generateAIResponse({ userId, messages }) {
   const safeMessages = Array.isArray(messages) ? messages : [];
@@ -500,18 +532,24 @@ async function generateAIResponse({ userId, messages }) {
 
       recordFailure(providerName, error);
 
-      console.warn(`[AI] Provider failed: ${providerName}`, error.message);
+      console.warn('[AI] Provider request failed', {
+        provider: providerName,
+        code: error.code || 'AI_PROVIDER_ERROR',
+        statusCode: error.statusCode || null,
+        message: error.message,
+      });
 
       errors.push({
         provider: providerName,
+        code: error.code || 'AI_PROVIDER_ERROR',
+        statusCode: error.statusCode || null,
         reason: error.message,
       });
     }
   }
 
-  const err = new Error('All AI providers unavailable');
-  err.details = errors;
-  throw err;
+  console.error('[AI] All configured providers are unavailable', { errors });
+  return createFallbackResponse(errors);
 }
 
 function getProviderHealth() {
@@ -537,6 +575,7 @@ module.exports = {
   generateAIResponse,
   getProviderHealth,
   ResponseSizeLimitError,
+  createFallbackResponse,
   // Exported for testing regression
   _caches: caches,
 };
