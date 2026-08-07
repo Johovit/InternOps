@@ -167,7 +167,9 @@ async function fetchWithTimeout(url, options = {}) {
     const response = await fetch(url, fetchOpts);
 
     if (!response.ok) {
-      const error = new Error(`AI provider failed with status ${response.status}`);
+      const error = new Error(
+        `AI provider failed with status ${response.status}`
+      );
       error.code =
         response.status >= 500
           ? 'AI_PROVIDER_SERVER_ERROR'

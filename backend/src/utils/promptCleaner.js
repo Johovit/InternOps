@@ -21,10 +21,12 @@ function safeParseJSON(value) {
 }
 
 function clean_and_parse_json(value) {
-  return safeParseJSON(value) || {
-    score: null,
-    reason: 'Parsing failed',
-  };
+  return (
+    safeParseJSON(value) || {
+      score: null,
+      reason: 'Parsing failed',
+    }
+  );
 }
 
 module.exports = {
