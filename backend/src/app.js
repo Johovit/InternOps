@@ -99,9 +99,8 @@ app.get(
 );
 
 app.get(
-  '/health/detailed',
+  '/health/full',
   {
-    preHandler: [auth, rbac('ADMIN')],
     config: {
       rateLimit: false,
     },

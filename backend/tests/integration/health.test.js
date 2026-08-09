@@ -31,43 +31,11 @@ describe('Health Check Integration Tests', () => {
     });
   });
 
-  describe('GET /health/detailed', () => {
+  describe('GET /health/full', () => {
     it('should return health status', async () => {
-      const {
-        SEEDED_ADMIN_EMAIL,
-        SEEDED_ADMIN_PASSWORD,
-        parseSetCookie,
-        mergeCookies,
-      } = require('./helpers');
-
-      let cookies = {};
-      const csrfRes = await app.inject({
-        method: 'GET',
-        url: '/api/v1/auth/csrf-token',
-      });
-      const csrfToken = JSON.parse(csrfRes.body).csrfToken;
-      mergeCookies(cookies, parseSetCookie(csrfRes.headers['set-cookie']));
-      mergeCookies(cookies, csrfRes.cookies);
-
-      const loginRes = await app.inject({
-        method: 'POST',
-        url: '/api/v1/auth/login',
-        cookies,
-        headers: {
-          'X-CSRF-Token': cookies['csrf-token'] || csrfToken,
-          'Content-Type': 'application/json',
-          Origin: 'http://localhost:5173',
-        },
-        payload: { email: SEEDED_ADMIN_EMAIL, password: SEEDED_ADMIN_PASSWORD },
-      });
-      const accessToken = JSON.parse(loginRes.body).accessToken;
-
       const res = await app.inject({
         method: 'GET',
-        url: '/health/detailed',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
+        url: '/health/full',
       });
 
       expect([200, 503]).toContain(res.statusCode);
