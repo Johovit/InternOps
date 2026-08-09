@@ -37,13 +37,8 @@ class AnthropicProvider(BaseAIProvider):
         self.base_url = "https://api.anthropic.com/v1/messages"
 
     async def generate_chat(self, messages: list[dict], temperature: float = 0.7, **kwargs) -> str:
-        system_prompt = ""
-        anthropic_messages = []
-        for msg in messages:
-            if msg["role"] == "system":
-                system_prompt += msg["content"] + "\n"
-            else:
-                anthropic_messages.append(msg)
+        system_prompts = [m["content"] for m in messages if m.get("role") == "system"]
+        anthropic_messages = [m for m in messages if m.get("role") != "system"]
                 
         payload = {
             "model": self.model_name,
@@ -51,8 +46,8 @@ class AnthropicProvider(BaseAIProvider):
             "messages": anthropic_messages,
             "temperature": temperature,
         }
-        if system_prompt:
-            payload["system"] = system_prompt.strip()
+        if system_prompts:
+            payload["system"] = "\n".join(system_prompts).strip()
             
         response_data = await self._send_request(payload)
         try:

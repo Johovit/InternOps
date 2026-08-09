@@ -29,7 +29,7 @@ class FaultyMockProvider(BaseAIProvider):
     def provider_name(self) -> str:
         return self._name
 
-    async def generate_chat(self, prompt: str, temperature: float = 0.7, **kwargs) -> str:
+    async def generate_chat(self, messages: list[dict], temperature: float = 0.7, **kwargs) -> str:
         self.calls += 1
         if self.fail_with is not None:
             raise self.fail_with
