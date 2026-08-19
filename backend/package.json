@@ -15,7 +15,9 @@
     "lint": "eslint . && node scripts/lint-modules.js",
     "lint:modules": "node scripts/lint-modules.js",
     "lint:db": "node scripts/lint-db.js",
-    "generate:module": "node scripts/generate-module.js"
+    "generate:module": "node scripts/generate-module.js",
+    "cleanup:seed:preview": "node scripts/cleanup-seed-data.js",
+    "cleanup:seed:apply": "node scripts/cleanup-seed-data.js --apply"
   },
   "dependencies": {
     "@fastify/compress": "^9.0.0",
