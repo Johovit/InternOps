@@ -62,6 +62,9 @@ module.exports = async function routes(fastify, opts) {
   fastify.register(require('./modules/uploads/routes'), {
     prefix: '/uploads',
   });
+  fastify.register(require('./modules/workbook-imports/routes'), {
+    prefix: '/workbook-imports',
+  });
   fastify.register(require('./modules/analytics/routes'), {
     prefix: '/analytics',
   });

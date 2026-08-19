@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+﻿import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { HelpCircle, Layers, Mail, Pencil, User, X } from 'lucide-react';
@@ -152,11 +152,11 @@ export default function EditUserModal({ open, user, onClose }) {
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fade-in"
+      className="fixed inset-0 z-[9999] flex items-center justify-center overflow-y-auto bg-black/20 p-4 dark:bg-black/40"
       onClick={handleClose}
     >
       <div
-        className="w-full max-w-3xl max-h-[88vh] rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl animate-scale-up text-slate-900 dark:text-white overflow-hidden flex flex-col"
+        className="w-full max-w-3xl max-h-[calc(100vh-2rem)] rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl animate-scale-up text-slate-900 dark:text-white overflow-hidden flex flex-col"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="shrink-0 flex items-start justify-between gap-4 px-6 py-5 border-b border-slate-200 dark:border-slate-700">
