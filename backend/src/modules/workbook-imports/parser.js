@@ -329,7 +329,7 @@ function mergeInterns(sheets) {
   });
   return { interns, conflicts };
 }
-function previewWorkbook(buffer) {
+function previewWorkbook(buffer, { includeComparisonData = false } = {}) {
   const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: false });
   const sheets = workbook.SheetNames.map((name) =>
     parseSheet(name, workbook.Sheets[name])
@@ -369,6 +369,11 @@ function previewWorkbook(buffer) {
       attendanceCount: intern.attendance.length,
       attendance: intern.attendance.slice(0, 10),
     })),
+    ...(includeComparisonData
+      ? {
+          comparisonInterns: merged.interns,
+        }
+      : {}),
   };
 }
 

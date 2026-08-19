@@ -155,3 +155,105 @@ describe('workbook conflict resolution validation', () => {
     expect(result.errors).toHaveLength(2);
   });
 });
+
+describe('workbook read-only database comparison', () => {
+  const {
+    compareWithDatabase,
+  } = require('../../src/modules/workbook-imports/service');
+
+  test('classifies new, matched, unchanged, and conflicting records without writes', () => {
+    const preview = {
+      interns: [
+        {
+          key: 'code:CODE-001',
+          name: 'Intern 001',
+          phone: '9000000001',
+          joinedDate: '2026-06-01',
+          workbookStatus: 'ACTIVE',
+          lifecycle: null,
+          attendance: [
+            { date: '2026-07-01', status: 'PRESENT' },
+            { date: '2026-07-02', status: 'ABSENT' },
+            { date: '2026-07-03', status: 'PRESENT' },
+          ],
+        },
+        {
+          key: 'code:CODE-002',
+          name: 'Intern 002',
+          phone: '9000000002',
+          attendance: [{ date: '2026-07-01', status: 'PRESENT' }],
+        },
+      ],
+    };
+    const users = [
+      {
+        id: 'user-1',
+        full_name: 'Intern 001',
+        phone: '9000000001',
+        joining_date: '2026-06-01',
+        internship_status: 'ACTIVE',
+      },
+    ];
+    const attendance = [
+      { user_id: 'user-1', date: '2026-07-01', status: 'PRESENT' },
+      { user_id: 'user-1', date: '2026-07-02', status: 'PRESENT' },
+    ];
+    const result = compareWithDatabase(preview, users, attendance);
+    expect(result).toMatchObject({
+      enabled: true,
+      mode: 'read-only',
+      writesAllowed: false,
+      counts: {
+        databaseMatched: 1,
+        databaseNewCandidates: 1,
+        databaseNewAttendance: 1,
+        databaseUnchangedAttendance: 1,
+        databaseAttendanceConflicts: 1,
+        databaseUnmatchedAttendance: 1,
+      },
+    });
+  });
+
+  test('counts attendance beyond the ten-row browser sample', () => {
+    const fullAttendance = Array.from({ length: 14 }, (_, index) => ({
+      date: `2026-07-${String(index + 1).padStart(2, '0')}`,
+      status: 'PRESENT',
+    }));
+    const result = compareWithDatabase(
+      {
+        interns: [
+          {
+            key: 'code:CODE-014',
+            name: 'Intern 014',
+            phone: '9000000014',
+            attendance: fullAttendance,
+          },
+        ],
+      },
+      [],
+      []
+    );
+    expect(result.counts.databaseNewCandidates).toBe(1);
+    expect(result.counts.databaseUnmatchedAttendance).toBe(14);
+  });
+
+  test('requires review when a normalized identity matches more than one Neon user', () => {
+    const preview = {
+      interns: [
+        {
+          key: 'name:intern 001',
+          name: 'Intern 001',
+          phone: null,
+          attendance: [],
+        },
+      ],
+    };
+    const users = [
+      { id: 'one', full_name: 'Intern 001', phone: null },
+      { id: 'two', full_name: ' Intern 001 ', phone: null },
+    ];
+    const result = compareWithDatabase(preview, users, []);
+    expect(result.counts.databaseAmbiguous).toBe(1);
+    expect(result.interns[0].status).toBe('REVIEW_REQUIRED');
+  });
+});

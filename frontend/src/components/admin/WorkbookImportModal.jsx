@@ -22,6 +22,14 @@ const SUMMARY_LABELS = {
   attendanceRecords: 'Attendance records',
   reviewRequired: 'Review required',
   warnings: 'Warnings',
+  databaseMatched: 'Matched in Neon',
+  databaseNewCandidates: 'New candidates',
+  databaseAmbiguous: 'Ambiguous matches',
+  databaseProfileDifferences: 'Profile differences',
+  databaseNewAttendance: 'New attendance',
+  databaseUnchangedAttendance: 'Attendance unchanged',
+  databaseAttendanceConflicts: 'Neon attendance conflicts',
+  databaseUnmatchedAttendance: 'Unmatched attendance',
 };
 
 const STATUS_STYLES = {
