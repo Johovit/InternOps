@@ -85,6 +85,41 @@ describe('workbook import preview parser', () => {
     expect(first.sources).toHaveLength(2);
     expect(first.joinedDate).toBeTruthy();
   });
+
+  test('accepts real intern names while rejecting report rows', () => {
+    const workbook = XLSX.utils.book_new();
+    addSheet(workbook, 'Attendance - August', [
+      ['NAME', 'Intern Code', 'Contact Info ', 'Status', 46235, 46236],
+      [
+        'Sample Person',
+        'REAL-001',
+        '+91 98765 43210',
+        'Active',
+        'JOINED',
+        'PRESENT',
+      ],
+      ['Another Person', '', '+91 98765 43211', 'Active', '', 'LEAVE'],
+      ['TOTAL', '', '', '', 2, 2],
+      ['NOTES', '', '', 'Internal report note', '', ''],
+      ['', '', '', '', '', ''],
+    ]);
+    const preview = previewWorkbook(
+      XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' })
+    );
+    expect(preview.summary.uniqueInterns).toBe(2);
+    expect(preview.summary.attendanceRecords).toBe(2);
+    expect(preview.interns.map((intern) => intern.name)).toEqual([
+      'Sample Person',
+      'Another Person',
+    ]);
+    expect(preview.interns.some((intern) => intern.name === 'TOTAL')).toBe(
+      false
+    );
+    expect(preview.interns.some((intern) => intern.name === 'NOTES')).toBe(
+      false
+    );
+  });
+
   test('does not treat lifecycle markers as attendance statuses', () => {
     const preview = previewWorkbook(workbookBuffer());
     const second = preview.interns.find((intern) => intern.code === 'CODE-002');

@@ -46,6 +46,45 @@ function normalizePhone(value) {
 function nameAlias(name) {
   return clean(name).toLowerCase().replace(/\s+/g, ' ');
 }
+const NON_INTERN_NAMES = new Set([
+  'NAME',
+  'TOTAL',
+  'TOTALS',
+  'SUMMARY',
+  'NOTES',
+  'NOTE',
+  'REMARKS',
+  'GRAND TOTAL',
+]);
+
+function isInternRow({
+  name,
+  code,
+  phone,
+  workbookStatus,
+  completionDate,
+  attendance,
+  lifecycleEvents,
+}) {
+  const normalizedName = normalized(name);
+  if (!normalizedName || NON_INTERN_NAMES.has(normalizedName)) return false;
+  if (
+    /^(SR\.?\s*NO\.?|S\.?\s*NO\.?|DATE|STATUS|ATTENDANCE)$/i.test(
+      normalizedName
+    )
+  ) {
+    return false;
+  }
+  return Boolean(
+    code ||
+    phone ||
+    workbookStatus ||
+    completionDate ||
+    attendance.length ||
+    lifecycleEvents.length
+  );
+}
+
 function aliasesFor({ code, phone, name }) {
   return [
     code ? `code:${code.toUpperCase()}` : null,
@@ -116,7 +155,7 @@ function parseSheet(sheetName, sheet) {
   for (let rowIndex = headerRow + 1; rowIndex < rows.length; rowIndex += 1) {
     const row = rows[rowIndex];
     const name = clean(row[nameIndex]);
-    if (!/^Intern\s+\d+$/i.test(name)) continue;
+    if (!name) continue;
     const code = codeIndex >= 0 ? clean(row[codeIndex]) || null : null;
     const phone = phoneIndex >= 0 ? normalizePhone(row[phoneIndex]) : null;
     const completionDate =
@@ -152,6 +191,19 @@ function parseSheet(sheetName, sheet) {
           `Row ${rowIndex + 1}: unrecognized marker "${clean(row[column.index])}" for ${name}`
         );
       }
+    }
+    if (
+      !isInternRow({
+        name,
+        code,
+        phone,
+        workbookStatus,
+        completionDate,
+        attendance,
+        lifecycleEvents,
+      })
+    ) {
+      continue;
     }
     interns.push({
       aliases: aliasesFor({ code, phone, name }),
@@ -385,4 +437,5 @@ module.exports = {
   isAttendanceSheet,
   parseSheet,
   mergeInterns,
+  isInternRow,
 };
