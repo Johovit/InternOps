@@ -47,6 +47,14 @@ class BaseAIProvider(ABC):
         """Returns the canonical string name of the provider."""
         return self.__class__.__name__.removesuffix("Provider").lower()
 
+    async def generate_text(self, prompt: str, temperature: float = 0.7, **kwargs) -> str:
+        """Generate text output from a single prompt string."""
+        return await self.generate_chat(
+            [{"role": "user", "content": prompt}],
+            temperature=temperature,
+            **kwargs,
+        )
+
     @abstractmethod
     async def generate_chat(
         self,

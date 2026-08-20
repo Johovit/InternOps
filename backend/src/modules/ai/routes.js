@@ -134,21 +134,22 @@ async function routes(fastify) {
         });
       }
 
-      const usage = await aiRepo.getTodayUsage(req.user.id);
-
-      if (usage >= config.ai.dailyLimit) {
-        return reply.status(429).send({
-          error: 'Daily AI usage limit exceeded',
-        });
-      }
-
       try {
+        const usageResult = await aiRepo.tryIncrementUsage(
+          req.user.id,
+          config.ai.dailyLimit
+        );
+
+        if (!usageResult) {
+          return reply.status(429).send({
+            error: 'Daily AI usage limit exceeded',
+          });
+        }
+
         const result = await generateAIResponse({
           userId: req.user.id,
           messages: finalMessages,
         });
-
-        await aiRepo.incrementUsage(req.user.id);
 
         return {
           provider: result.provider,

@@ -417,4 +417,55 @@ describe('AI Provider Service', () => {
 
     expect(mockFetch).toHaveBeenCalledTimes(10);
   });
+  it('should enforce the default 5MB response size limit when AI_MAX_RESPONSE_BYTES is not set', async () => {
+    jest.resetModules();
+    delete process.env.AI_MAX_RESPONSE_BYTES;
+    process.env.AI_PROVIDER_ORDER = 'groq';
+    mockGetRedisClient.mockResolvedValue(null);
+
+    // Default is 5MB
+    const oversizedLength = 5 * 1024 * 1024 + 1;
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: { get: jest.fn().mockReturnValue(String(oversizedLength)) },
+      text: jest.fn().mockResolvedValue(''),
+    });
+
+    aiService = require('../../src/services/aiProviderService');
+
+    await expect(
+      aiService.generateAIResponse({
+        userId: 'size-test-user',
+        messages: [{ role: 'user', content: 'test' }],
+      })
+    ).rejects.toThrow('Content-Length exceeds 5242880 bytes');
+  });
+
+  it('should enforce the custom AI_MAX_RESPONSE_BYTES limit when it is set', async () => {
+    jest.resetModules();
+    process.env.AI_MAX_RESPONSE_BYTES = '1024'; // 1KB
+    process.env.AI_PROVIDER_ORDER = 'groq';
+    mockGetRedisClient.mockResolvedValue(null);
+
+    // Larger than 1KB
+    const oversizedLength = 2048;
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: { get: jest.fn().mockReturnValue(String(oversizedLength)) },
+      text: jest.fn().mockResolvedValue(''),
+    });
+
+    aiService = require('../../src/services/aiProviderService');
+
+    await expect(
+      aiService.generateAIResponse({
+        userId: 'size-test-user',
+        messages: [{ role: 'user', content: 'test' }],
+      })
+    ).rejects.toThrow('Content-Length exceeds 1024 bytes');
+  });
 });

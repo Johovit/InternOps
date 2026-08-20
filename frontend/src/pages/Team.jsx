@@ -603,7 +603,7 @@ function MemberDetail({ memberId, onClose }) {
   const member = fetchedMember || teamMembers.find((m) => m.id === memberId);
 
   useEffect(() => {
-    if (member) {
+    if (member && !edit) {
       setForm({
         full_name: member.full_name || '',
         phone: member.phone || '',
@@ -619,7 +619,7 @@ function MemberDetail({ memberId, onClose }) {
         notes: member.notes || '',
       });
     }
-  }, [memberId, member]);
+  }, [memberId, member, edit]);
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['teamMember', memberId] });

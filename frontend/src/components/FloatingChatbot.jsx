@@ -156,42 +156,80 @@ const QUICK_CHIPS = [
 // ── Markdown-to-JSX renderer (simple) ────────────────────────────────────────
 function renderText(text) {
   const lines = text.split('\n');
-  return lines.map((line, i) => {
+
+  // Group consecutive list items into ul/ol wrappers
+  const groups = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (line.startsWith('- ') || line.startsWith('* ')) {
+      const items = [];
+      while (
+        i < lines.length &&
+        (lines[i].startsWith('- ') || lines[i].startsWith('* '))
+      ) {
+        items.push(lines[i].slice(2));
+        i++;
+      }
+      groups.push({ type: 'ul', items });
+    } else if (line.match(/^\d+\. /)) {
+      const items = [];
+      while (i < lines.length && lines[i].match(/^\d+\. /)) {
+        items.push(lines[i].replace(/^\d+\. /, ''));
+        i++;
+      }
+      groups.push({ type: 'ol', items });
+    } else {
+      groups.push({ type: 'line', content: line });
+      i++;
+    }
+  }
+
+  return groups.map((group, gi) => {
+    if (group.type === 'ul') {
+      return (
+        <ul key={gi} className="ml-4 list-disc space-y-0.5 my-1">
+          {group.items.map((item, j) => (
+            <li
+              key={j}
+              className="text-xs leading-relaxed text-slate-700 dark:text-slate-300"
+            >
+              {boldify(item)}
+            </li>
+          ))}
+        </ul>
+      );
+    }
+    if (group.type === 'ol') {
+      return (
+        <ol key={gi} className="ml-4 list-decimal space-y-0.5 my-1">
+          {group.items.map((item, j) => (
+            <li
+              key={j}
+              className="text-xs leading-relaxed text-slate-700 dark:text-slate-300"
+            >
+              {boldify(item)}
+            </li>
+          ))}
+        </ol>
+      );
+    }
+    const line = group.content;
     if (line.startsWith('> ')) {
       return (
         <blockquote
-          key={i}
+          key={gi}
           className="border-l-2 border-indigo-400 pl-3 text-xs text-slate-500 dark:text-slate-400 my-1.5 italic"
         >
           {boldify(line.slice(2))}
         </blockquote>
       );
     }
-    if (line.startsWith('- ') || line.startsWith('* ')) {
-      return (
-        <li
-          key={i}
-          className="ml-4 list-disc text-xs leading-relaxed text-slate-700 dark:text-slate-300"
-        >
-          {boldify(line.slice(2))}
-        </li>
-      );
-    }
-    if (line.match(/^\d+\. /)) {
-      return (
-        <li
-          key={i}
-          className="ml-4 list-decimal text-xs leading-relaxed text-slate-700 dark:text-slate-300"
-        >
-          {boldify(line.replace(/^\d+\. /, ''))}
-        </li>
-      );
-    }
     if (line.startsWith('```') || line.trim() === '')
-      return <div key={i} className="h-1" />;
+      return <div key={gi} className="h-1" />;
     return (
       <p
-        key={i}
+        key={gi}
         className="text-xs leading-relaxed text-slate-700 dark:text-slate-300"
       >
         {boldify(line)}
@@ -282,6 +320,8 @@ export default function FloatingChatbot() {
   const user = useAuthStore((s) => s.user);
   const role = user?.role || 'INTERN';
 
+  const isAllowed = ['ADMIN', 'SENIOR_TL', 'TL'].includes(role);
+
   const now = () =>
     new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
@@ -308,7 +348,12 @@ What do you need help with?`;
 
   // Auto-scroll to bottom
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (
+      messagesEndRef.current &&
+      typeof messagesEndRef.current.scrollIntoView === 'function'
+    ) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
   }, [messages, isTyping]);
 
   // Focus input when opened
@@ -392,6 +437,8 @@ What do you need help with?`;
       },
     ]);
   };
+
+  if (!isAllowed) return null;
 
   return (
     <>

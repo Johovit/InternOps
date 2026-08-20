@@ -205,6 +205,23 @@ async function getAuthorizedSubordinates(managerId) {
   return res.rows;
 }
 
+async function getAllUsers() {
+  const res = await pool.query(
+    'SELECT id, full_name, email, role, department_id FROM users WHERE deleted_at IS NULL'
+  );
+
+  return res.rows;
+}
+
+async function getUsersByDepartment(departmentId) {
+  const res = await pool.query(
+    'SELECT id, full_name, email, role, department_id FROM users WHERE deleted_at IS NULL AND department_id = $1',
+    [departmentId]
+  );
+
+  return res.rows;
+}
+
 async function getAnomalies(managerId, isAdmin, filters = {}) {
   const { intern_id, flag_type, viewed } = filters;
   let query = `
@@ -298,6 +315,8 @@ module.exports = {
   bulkMark,
   listHierarchySubordinates,
   getAuthorizedSubordinates,
+  getAllUsers,
+  getUsersByDepartment,
   getAnomalies,
   markAnomalyViewed,
 };
