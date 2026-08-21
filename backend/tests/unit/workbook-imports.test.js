@@ -75,13 +75,7 @@ describe('workbook import preview parser', () => {
     const preview = previewWorkbook(workbookBuffer());
     expect(preview.summary.uniqueInterns).toBe(2);
     const first = preview.interns.find((intern) => intern.code === 'CODE-001');
-    expect(first.aliases).toEqual(
-      expect.arrayContaining([
-        'code:CODE-001',
-        'phone:9000000001',
-        'name:intern 001',
-      ])
-    );
+    expect(first.aliases).toEqual(['phone:9000000001']);
     expect(first.sources).toHaveLength(2);
     expect(first.joinedDate).toBeTruthy();
   });
@@ -290,5 +284,42 @@ describe('workbook read-only database comparison', () => {
     const result = compareWithDatabase(preview, users, []);
     expect(result.counts.databaseAmbiguous).toBe(1);
     expect(result.interns[0].status).toBe('REVIEW_REQUIRED');
+  });
+});
+
+describe('workbook identity aliases', () => {
+  const { aliasesFor } = require('../../src/modules/workbook-imports/parser');
+
+  test('uses phone as the primary identity alias', () => {
+    expect(
+      aliasesFor({
+        code: 'RECENT-001',
+        phone: '+91 98765 43210',
+        name: 'Sample Person',
+      })
+    ).toEqual(['phone:9876543210']);
+  });
+
+  test('falls back to code and then name only when phone is missing', () => {
+    expect(
+      aliasesFor({ code: 'RECENT-001', phone: '', name: 'Sample Person' })
+    ).toEqual(['code:RECENT-001']);
+    expect(aliasesFor({ code: '', phone: '', name: 'Sample Person' })).toEqual([
+      'name:SAMPLE PERSON',
+    ]);
+  });
+
+  test('keeps different phone numbers as different interns even when names repeat', () => {
+    const workbook = XLSX.utils.book_new();
+    addSheet(workbook, 'Attendance - June', [
+      ['NAME', 'Intern Code', 'Contact Info ', 'Status', 46290],
+      ['Repeated Name', '', '+91 98765 43210', 'Active', 'INFORMED'],
+      ['Repeated Name', '', '+91 98765 43211', 'Active', 'PRESENT'],
+    ]);
+    const preview = previewWorkbook(
+      XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' })
+    );
+    expect(preview.summary.uniqueInterns).toBe(2);
+    expect(preview.summary.reviewRequired).toBe(0);
   });
 });

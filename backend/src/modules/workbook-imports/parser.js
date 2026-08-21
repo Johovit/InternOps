@@ -86,11 +86,16 @@ function isInternRow({
 }
 
 function aliasesFor({ code, phone, name }) {
-  return [
-    code ? `code:${code.toUpperCase()}` : null,
-    phone ? `phone:${phone}` : null,
-    name ? `name:${nameAlias(name)}` : null,
-  ].filter(Boolean);
+  const normalizedPhone = normalizePhone(phone);
+  if (normalizedPhone) return [`phone:${normalizedPhone}`];
+
+  const normalizedCode = normalized(code);
+  if (normalizedCode) return [`code:${normalizedCode}`];
+
+  const normalizedName = normalized(name);
+  if (normalizedName) return [`name:${normalizedName}`];
+
+  return [];
 }
 function generatedEmail(code, name) {
   const base = (code || name)
@@ -438,4 +443,5 @@ module.exports = {
   parseSheet,
   mergeInterns,
   isInternRow,
+  aliasesFor,
 };
