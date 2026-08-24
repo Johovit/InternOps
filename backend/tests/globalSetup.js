@@ -2,6 +2,11 @@
 // connection and reset the seeded admin password to its known value so
 // every test suite starts from the same state. This protects against
 // cascading failures where a previous run left the password changed.
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
+const { activateTestDatabase } = require('../src/config/testDatabase');
+activateTestDatabase();
+
 const argon2 = require('argon2');
 const pool = require('../src/config/db');
 
