@@ -10,6 +10,34 @@ import CustomSelect from '../components/CustomSelect';
 import { ApiErrorState } from '../components/ui';
 import DepartmentAttendanceSheet from '../components/department/DepartmentAttendanceSheet';
 
+function monthRange(month, today) {
+  const [year, monthNumber] = month.split('-').map(Number);
+  const from = `${month}-01`;
+  const lastDay = new Date(Date.UTC(year, monthNumber, 0))
+    .toISOString()
+    .slice(0, 10);
+  return { from, to: month === today.slice(0, 7) ? today : lastDay };
+}
+const ATTENDANCE_ROLE_ORDER = {
+  ADMIN: 0,
+  SENIOR_TL: 1,
+  TL: 2,
+  CAPTAIN: 3,
+  INTERN: 4,
+};
+function sortAttendanceMembers(members) {
+  return [...members].sort((a, b) => {
+    const roleDifference =
+      (ATTENDANCE_ROLE_ORDER[a.role] ?? 99) -
+      (ATTENDANCE_ROLE_ORDER[b.role] ?? 99);
+    if (roleDifference) return roleDifference;
+    return String(a.full_name || a.email || '').localeCompare(
+      String(b.full_name || b.email || ''),
+      undefined,
+      { sensitivity: 'base' }
+    );
+  });
+}
 const STATUS_BADGE = {
   PRESENT:
     'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-100 dark:border-emerald-900/60',
@@ -40,10 +68,25 @@ export default function Attendance({
   const [page, setPage] = useState(1);
   const [viewAll, setViewAll] = useState(false);
   const today = new Date().toISOString().slice(0, 10);
-  const monthStart = `${today.slice(0, 8)}01`;
-  const [sheetFrom, setSheetFrom] = useState(monthStart);
-  const [sheetTo, setSheetTo] = useState(today);
+  const [selectedMonth, setSelectedMonth] = useState(today.slice(0, 7));
+  const { from: sheetFrom, to: sheetTo } = monthRange(selectedMonth, today);
   const limit = 30;
+  const downloadAttendance = async () => {
+    const response = await api.get('/reports/export/attendance-detail-csv', {
+      params: {
+        from: sheetFrom,
+        to: sheetTo,
+        department_id: deptId || undefined,
+      },
+      responseType: 'blob',
+    });
+    const url = URL.createObjectURL(response.data);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `attendance-${selectedMonth}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
 
   useEffect(() => {
     if (isProjectView && roster.length > 0) {
@@ -123,7 +166,7 @@ export default function Attendance({
     );
 
     if (!selectedUserIsInDepartment) {
-      setViewUserId(team[0].id);
+      setViewUserId(sortAttendanceMembers(team)[0].id);
       setPage(1);
     }
   }, [deptId, isProjectView, team, viewUserId]);
@@ -135,23 +178,28 @@ export default function Attendance({
         effectiveTeam.find((m) => m.id === viewUserId)?.email ||
         '';
 
-  const attendanceUserOptions = isProjectView
-    ? roster.map((m) => ({
-        value: m.id,
-        label: `${m.full_name || m.email} (${m.role})`,
-      }))
-    : [
-        {
-          value: user?.id || '',
-          label: `Me (${user?.email || 'Current user'})`,
-        },
-        ...team
-          .filter((m) => m.id !== user?.id)
-          .map((m) => ({
-            value: m.id,
-            label: `${m.full_name || m.email} (${m.role})`,
-          })),
-      ];
+  const attendanceOptionMembers = isProjectView
+    ? sortAttendanceMembers(roster)
+    : sortAttendanceMembers([
+        ...(user?.id
+          ? [
+              {
+                id: user.id,
+                full_name: user.full_name,
+                email: user.email,
+                role: user.role,
+                isCurrentUser: true,
+              },
+            ]
+          : []),
+        ...team.filter((member) => member.id !== user?.id),
+      ]);
+  const attendanceUserOptions = attendanceOptionMembers.map((member) => ({
+    value: member.id,
+    label: member.isCurrentUser
+      ? `Me (${member.email || 'Current user'}) - ${member.role}`
+      : `${member.full_name || member.email} (${member.role})`,
+  }));
 
   return (
     <div className="animate-fade-in-up">
@@ -283,10 +331,8 @@ export default function Attendance({
               <DepartmentAttendanceSheet
                 departmentName={activeDepartment?.name}
                 data={sheetData}
-                from={sheetFrom}
-                to={sheetTo}
-                onFromChange={setSheetFrom}
-                onToChange={setSheetTo}
+                selectedMonth={selectedMonth}
+                onMonthChange={setSelectedMonth}
                 isLoading={sheetIsLoading}
                 error={sheetError}
                 onRetry={refetchSheet}
@@ -475,10 +521,8 @@ export default function Attendance({
               <DepartmentAttendanceSheet
                 departmentName={activeDepartment?.name}
                 data={sheetData}
-                from={sheetFrom}
-                to={sheetTo}
-                onFromChange={setSheetFrom}
-                onToChange={setSheetTo}
+                selectedMonth={selectedMonth}
+                onMonthChange={setSelectedMonth}
                 isLoading={sheetIsLoading}
                 error={sheetError}
                 onRetry={refetchSheet}

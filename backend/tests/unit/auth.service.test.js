@@ -189,6 +189,7 @@ describe('Auth Service', () => {
           email: user.email,
           role: user.role,
           full_name: user.full_name,
+          mustChangePassword: false,
         },
       });
     });
@@ -286,6 +287,7 @@ describe('Auth Service', () => {
           email: user.email,
           role: user.role,
           full_name: user.full_name,
+          mustChangePassword: false,
         },
       });
     });

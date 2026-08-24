@@ -1,6 +1,7 @@
 const auth = require('../../middleware/auth');
 const rbac = require('../../middleware/rbac');
 const service = require('./service');
+const execution = require('./execution');
 
 const XLSX_MIMES = new Set([
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -15,46 +16,146 @@ async function routes(fastify) {
     '/preview',
     {
       config: { rateLimit: { max: 5, timeWindow: '1 minute' } },
-      preHandler: [auth, rbac('ADMIN')],
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],
       schema: {
         tags: ['Workbook Imports'],
         description:
           'Preview an anonymized XLSX workbook without writing to the database',
+        querystring: {
+          type: 'object',
+          properties: {
+            departmentId: { type: 'string', format: 'uuid' },
+            managerId: { type: 'string', format: 'uuid' },
+          },
+        },
       },
     },
     async (request, reply) => {
-      const upload = await request.file({
-        limits: { fileSize: MAX_WORKBOOK_SIZE, files: 1 },
-      });
-      if (!upload)
-        return reply.status(400).send({ error: 'No workbook uploaded' });
-      const filename = String(upload.filename || '');
-      if (
-        !filename.toLowerCase().endsWith('.xlsx') ||
-        !XLSX_MIMES.has(upload.mimetype)
-      ) {
-        return reply
-          .status(400)
-          .send({ error: 'Only .xlsx workbooks are supported' });
-      }
-      const buffer = await upload.toBuffer();
-      if (upload.file.truncated || buffer.length > MAX_WORKBOOK_SIZE) {
-        return reply
-          .status(413)
-          .send({ error: 'Workbook exceeds the 10MB limit' });
-      }
-      if (!hasZipSignature(buffer)) {
-        return reply
-          .status(400)
-          .send({ error: 'Workbook contents are not a valid XLSX file' });
-      }
+      const uploads = {};
       try {
-        return await service.preview(buffer);
+        for await (const part of request.parts({
+          limits: { fileSize: MAX_WORKBOOK_SIZE, files: 2 },
+        })) {
+          if (part.type !== 'file') continue;
+          if (!['workbook', 'emailWorkbook'].includes(part.fieldname)) {
+            part.file.resume();
+            continue;
+          }
+          const filename = String(part.filename || '');
+          if (
+            !filename.toLowerCase().endsWith('.xlsx') ||
+            !XLSX_MIMES.has(part.mimetype)
+          ) {
+            return reply
+              .status(400)
+              .send({ error: 'Only .xlsx workbooks are supported' });
+          }
+          const buffer = await part.toBuffer();
+          if (part.file.truncated || buffer.length > MAX_WORKBOOK_SIZE) {
+            return reply
+              .status(413)
+              .send({ error: 'Workbook exceeds the 10MB limit' });
+          }
+          if (!hasZipSignature(buffer)) {
+            return reply
+              .status(400)
+              .send({ error: 'Workbook contents are not a valid XLSX file' });
+          }
+          uploads[part.fieldname] = buffer;
+        }
+        if (!uploads.workbook) {
+          return reply
+            .status(400)
+            .send({ error: 'Attendance workbook is required' });
+        }
+        return await service.preview(
+          uploads.workbook,
+          {
+            departmentId: request.query?.departmentId,
+            managerId: request.query?.managerId,
+            requesterId: request.user.id,
+            requesterRole: request.user.role,
+            requesterDepartmentId: request.user.departmentId,
+            log: request.log,
+          },
+          uploads.emailWorkbook || null
+        );
       } catch (error) {
         request.log.warn({ err: error }, 'Workbook preview parsing failed');
         return reply
           .status(400)
           .send({ error: `Could not parse workbook: ${error.message}` });
+      }
+    }
+  );
+  fastify.post(
+    '/execute',
+    {
+      config: { rateLimit: { max: 2, timeWindow: '5 minutes' } },
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],
+      schema: {
+        tags: ['Workbook Imports'],
+        description:
+          'Create current intern accounts and import current attendance',
+        querystring: {
+          type: 'object',
+          additionalProperties: false,
+          required: [
+            'departmentId',
+            'managerId',
+            'previewFingerprint',
+            'emailPreviewFingerprint',
+          ],
+          properties: {
+            departmentId: { type: 'string', format: 'uuid' },
+            managerId: { type: 'string', format: 'uuid' },
+            previewFingerprint: {
+              type: 'string',
+              pattern: '^[a-f0-9]{64}$',
+            },
+            emailPreviewFingerprint: {
+              type: 'string',
+              pattern: '^[a-f0-9]{64}$',
+            },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const uploads = {};
+      for await (const part of request.parts({
+        limits: { fileSize: MAX_WORKBOOK_SIZE, files: 2 },
+      })) {
+        if (part.type !== 'file') continue;
+        if (!['workbook', 'emailWorkbook'].includes(part.fieldname)) {
+          part.file.resume();
+          continue;
+        }
+        const buffer = await part.toBuffer();
+        if (part.file.truncated || !hasZipSignature(buffer))
+          return reply.status(400).send({ error: 'Invalid XLSX upload' });
+        uploads[part.fieldname] = buffer;
+      }
+      if (!uploads.workbook || !uploads.emailWorkbook)
+        return reply.status(400).send({ error: 'Both workbooks are required' });
+      try {
+        return await execution.execute(
+          uploads.workbook,
+          uploads.emailWorkbook,
+          {
+            ...request.query,
+            requesterId: request.user.id,
+            requesterRole: request.user.role,
+            requesterDepartmentId: request.user.departmentId,
+          }
+        );
+      } catch (error) {
+        request.log.warn({ err: error }, 'Workbook import failed');
+        return reply.status(error.statusCode || 409).send({
+          error: error.message,
+          code: error.code,
+          duplicates: error.duplicates,
+        });
       }
     }
   );

@@ -4,7 +4,9 @@ const {
   excelDate,
   normalizeSheetName,
   normalizePhone,
+  normalizeEmail,
   isAttendanceSheet,
+  parseEmailDetailsWorkbook,
 } = require('../../src/modules/workbook-imports/parser');
 
 function addSheet(workbook, name, rows) {
@@ -62,6 +64,11 @@ describe('workbook import preview parser', () => {
     expect(isAttendanceSheet('Ratings - Aug')).toBe(false);
     expect(normalizePhone('+91 90000 00001')).toBe('9000000001');
     expect(excelDate(46235)).toMatch(/^2026-/);
+  });
+  test('normalizes real workbook email values without inventing fallbacks', () => {
+    expect(normalizeEmail(' Person@Gmail.com ')).toBe('person@gmail.com');
+    expect(normalizeEmail('')).toBeNull();
+    expect(normalizeEmail('not-an-email')).toBeNull();
   });
   test('ignores non-attendance sheets', () => {
     const preview = previewWorkbook(workbookBuffer());
@@ -321,5 +328,623 @@ describe('workbook identity aliases', () => {
     );
     expect(preview.summary.uniqueInterns).toBe(2);
     expect(preview.summary.reviewRequired).toBe(0);
+  });
+});
+
+describe('active intern account dry run', () => {
+  const {
+    buildActiveAccountPlan,
+  } = require('../../src/modules/workbook-imports/service');
+
+  test('builds an active-only account dry run without attendance writes', () => {
+    const interns = [
+      {
+        key: 'phone:9000000001',
+        name: 'Active Intern',
+        code: 'INT-001',
+        phone: '9000000001',
+        email: 'active@gmail.com',
+        workbookStatus: 'Active',
+        lifecycle: null,
+        attendance: [{ date: '2026-08-01', status: 'PRESENT' }],
+      },
+      {
+        key: 'phone:9000000002',
+        name: 'Completed Intern',
+        code: 'INT-002',
+        phone: '9000000002',
+        email: 'completed@gmail.com',
+        workbookStatus: 'Completed',
+        lifecycle: null,
+        attendance: [{ date: '2026-08-01', status: 'PRESENT' }],
+      },
+      {
+        key: 'phone:9000000003',
+        name: 'Missing Email',
+        code: 'INT-003',
+        phone: '9000000003',
+        email: null,
+        workbookStatus: 'Active',
+        lifecycle: null,
+        attendance: [],
+      },
+    ];
+    const plan = buildActiveAccountPlan(
+      interns,
+      {
+        department: { id: 'department-1', name: 'AI Tutor' },
+        manager: { id: 'manager-1', full_name: 'Senior TL' },
+        existingInterns: [],
+      },
+      { departmentId: 'department-1', managerId: 'manager-1' }
+    );
+    expect(plan).toMatchObject({
+      mode: 'active-account-dry-run',
+      writesAllowed: false,
+      attendanceImportEnabled: false,
+      passwordChangeEnforcementReady: false,
+      counts: {
+        accountPlanTotal: 3,
+        accountPlanActive: 2,
+        accountPlanEligible: 1,
+        accountPlanNonActiveExcluded: 1,
+        accountPlanMissingEmail: 1,
+        accountPlanManualReview: 1,
+        accountPlanAttendanceExcluded: 2,
+      },
+    });
+  });
+});
+
+describe('email details workbook matching', () => {
+  const {
+    applyEmailProfiles,
+  } = require('../../src/modules/workbook-imports/service');
+  test('parses Full details email profiles and matches phone before code', () => {
+    const workbook = XLSX.utils.book_new();
+    addSheet(workbook, 'Full details', [
+      ['Intern Code', 'Name', 'Email ID', 'Mobile No'],
+      ['INT-001', 'One', 'one@gmail.com', '+91 90000 00001'],
+      ['INT-002', 'Two', 'two@gmail.com', '+91 90000 00002'],
+    ]);
+    const parsed = parseEmailDetailsWorkbook(
+      XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' })
+    );
+    const result = applyEmailProfiles(
+      [
+        { code: 'OTHER', phone: '9000000001', workbookStatus: 'Active' },
+        { code: 'INT-002', phone: null, workbookStatus: 'Active' },
+      ],
+      parsed.profiles
+    );
+    expect(result.counts.emailMatchedByPhone).toBe(1);
+    expect(result.counts.emailMatchedByCode).toBe(1);
+    expect(result.interns.map((intern) => intern.email)).toEqual([
+      'one@gmail.com',
+      'two@gmail.com',
+    ]);
+  });
+  test('never matches an active intern by name alone', () => {
+    const result = applyEmailProfiles(
+      [
+        {
+          name: 'Same Name',
+          phone: null,
+          code: null,
+          workbookStatus: 'Active',
+        },
+      ],
+      [{ email: 'same@gmail.com', phone: null, code: null }]
+    );
+    expect(result.counts.emailUnmatchedActive).toBe(1);
+    expect(result.interns[0].email).toBeNull();
+  });
+});
+
+describe('active account manual-review privacy', () => {
+  const {
+    buildActiveAccountPlan,
+  } = require('../../src/modules/workbook-imports/service');
+
+  test('returns only privacy-safe manual-review details', () => {
+    const plan = buildActiveAccountPlan(
+      [
+        {
+          key: 'phone:9000000099',
+          name: 'Private Person',
+          code: null,
+          phone: '9000000099',
+          email: 'private@example.com',
+          emailMatch: 'UNMATCHED',
+          workbookStatus: 'Active',
+          lifecycle: null,
+          attendance: [],
+          sourceRows: [{ sheet: 'Attendance - Aug', row: 81 }],
+        },
+      ],
+      {
+        department: { id: 'department-1', name: 'AI Tutor' },
+        manager: { id: 'manager-1', full_name: 'Manager' },
+        existingInterns: [],
+      },
+      { departmentId: 'department-1', managerId: 'manager-1' }
+    );
+    expect(plan.records).toBeUndefined();
+    expect(plan.manualReview).toHaveLength(1);
+    expect(plan.manualReview[0].reasons).toEqual(
+      expect.arrayContaining(['MISSING_INTERN_CODE'])
+    );
+    expect(plan.manualReview[0]).toMatchObject({
+      name: 'Private Person',
+      maskedPhone: '******0099',
+      sources: [{ sheet: 'Attendance - Aug', row: 81 }],
+    });
+    const serialized = JSON.stringify(plan.manualReview);
+    expect(serialized).not.toContain('private@example.com');
+    expect(serialized).not.toContain('9000000099');
+  });
+});
+
+describe('active account email validation', () => {
+  const {
+    buildActiveAccountPlan,
+    isValidAccountEmail,
+  } = require('../../src/modules/workbook-imports/service');
+
+  test('accepts valid college and organization email addresses', () => {
+    expect(isValidAccountEmail('student@college.edu')).toBe(true);
+    expect(isValidAccountEmail('student@university.ac.in')).toBe(true);
+    expect(isValidAccountEmail('student@company.org')).toBe(true);
+    expect(isValidAccountEmail('student@gmail.com')).toBe(true);
+    expect(isValidAccountEmail('not-an-email')).toBe(false);
+  });
+
+  test('keeps a valid college-email active intern eligible', () => {
+    const plan = buildActiveAccountPlan(
+      [
+        {
+          key: 'phone:9000000077',
+          name: 'College Email Intern',
+          code: 'INT-077',
+          phone: '9000000077',
+          email: 'student@college.edu',
+          emailMatch: 'PHONE',
+          workbookStatus: 'Active',
+          lifecycle: null,
+          attendance: [],
+        },
+      ],
+      {
+        department: { id: 'department-1', name: 'AI Tutor' },
+        manager: { id: 'manager-1', full_name: 'Manager' },
+        existingInterns: [],
+      },
+      { departmentId: 'department-1', managerId: 'manager-1' }
+    );
+    expect(plan.counts.accountPlanEligible).toBe(1);
+    expect(plan.counts.accountPlanInvalidGmail).toBe(0);
+    expect(plan.counts.accountPlanManualReview).toBe(0);
+  });
+});
+
+describe('manual-review source location', () => {
+  const {
+    buildActiveAccountPlan,
+  } = require('../../src/modules/workbook-imports/service');
+
+  test('shows the exact name, attendance source, and masked phone for review', () => {
+    const plan = buildActiveAccountPlan(
+      [
+        {
+          key: 'phone:9123456789',
+          name: 'Review Intern',
+          code: null,
+          phone: '9123456789',
+          email: null,
+          emailMatch: 'UNMATCHED',
+          workbookStatus: 'Active',
+          lifecycle: null,
+          attendance: [],
+          sourceRows: [
+            { sheet: 'Attendance - July', row: 44 },
+            { sheet: 'Attendance - Aug', row: 81 },
+          ],
+        },
+      ],
+      {
+        department: { id: 'department-1', name: 'AI Tutor' },
+        manager: { id: 'manager-1', full_name: 'Manager' },
+        existingInterns: [],
+      },
+      { departmentId: 'department-1', managerId: 'manager-1' }
+    );
+    expect(plan.manualReview[0]).toMatchObject({
+      name: 'Review Intern',
+      maskedPhone: '******6789',
+      sources: [
+        { sheet: 'Attendance - July', row: 44 },
+        { sheet: 'Attendance - Aug', row: 81 },
+      ],
+      reasons: expect.arrayContaining(['MISSING_EMAIL', 'MISSING_INTERN_CODE']),
+    });
+    const serialized = JSON.stringify(plan.manualReview[0]);
+    expect(serialized).not.toContain('9123456789');
+  });
+});
+
+describe('Intern Details email fallback', () => {
+  const {
+    applyEmailProfiles,
+    buildActiveAccountPlan,
+  } = require('../../src/modules/workbook-imports/service');
+
+  test('uses Intern Details only as a mobile fallback', () => {
+    const profiles = [
+      {
+        email: 'primary@example.com',
+        phone: '9000000001',
+        code: 'INT-001',
+        sourceSheet: 'Full details',
+        sourceRow: 2,
+        sourcePriority: 1,
+        joiningDate: '2026-07-01',
+        endingDate: '2026-10-01',
+      },
+      {
+        email: 'fallback@example.com',
+        phone: '9000000001',
+        code: null,
+        sourceSheet: 'Intern Details',
+        sourceRow: 180,
+        sourcePriority: 2,
+        joiningDate: '2026-07-02',
+        endingDate: '2026-10-02',
+      },
+      {
+        email: 'second@example.com',
+        phone: '9000000002',
+        code: null,
+        sourceSheet: 'Intern Details',
+        sourceRow: 183,
+        sourcePriority: 2,
+        joiningDate: '2026-08-11',
+        endingDate: '2026-11-11',
+      },
+    ];
+    const result = applyEmailProfiles(
+      [
+        { code: 'INT-001', phone: '9000000001', workbookStatus: 'Active' },
+        { code: null, phone: '9000000002', workbookStatus: 'Active' },
+      ],
+      profiles
+    );
+    expect(result.interns[0]).toMatchObject({
+      email: 'primary@example.com',
+      emailProfileSource: 'Full details',
+    });
+    expect(result.interns[1]).toMatchObject({
+      email: 'second@example.com',
+      emailProfileSource: 'Intern Details',
+    });
+    expect(result.counts.emailMatchedFromInternDetails).toBe(1);
+  });
+
+  test('does not use email profile dates for eligibility', () => {
+    const plan = buildActiveAccountPlan(
+      [
+        {
+          key: 'phone:9000000003',
+          name: 'Email Only',
+          code: 'INT-003',
+          phone: '9000000003',
+          email: 'student@college.edu',
+          workbookStatus: 'Active',
+          lifecycle: null,
+          attendance: [],
+          completionDate: null,
+          profileEndingDate: '2026-06-05',
+        },
+      ],
+      {
+        department: { id: 'department-1' },
+        manager: { id: 'manager-1' },
+        existingInterns: [],
+      },
+      {
+        departmentId: 'department-1',
+        managerId: 'manager-1',
+        asOfDate: '2026-08-23',
+      }
+    );
+    expect(plan.counts.accountPlanEligible).toBe(1);
+    expect(plan.counts.accountPlanStatusVerification).toBe(0);
+  });
+});
+
+describe('email profile date parsing', () => {
+  test('parses Intern Details profile dates', () => {
+    const workbook = XLSX.utils.book_new();
+    addSheet(workbook, 'Full details', [
+      ['Intern Code', 'Email ID', 'Mobile No'],
+      ['INT-001', 'primary@example.com', '9000000001'],
+    ]);
+    addSheet(workbook, 'Intern Details', [
+      [
+        'Time Stamp',
+        'Name',
+        'Domain',
+        'Mobile Number (Whatsapp)',
+        'Joining Date (On offer letter)',
+        'Ending Date(On offer letter)',
+        'Email',
+      ],
+      [
+        '14/08/2026 20:11:49',
+        'Fallback Intern',
+        'Web development',
+        '9000000002',
+        '11/08/2026',
+        '11/11/2026',
+        'fallback@example.com',
+      ],
+    ]);
+    const parsed = parseEmailDetailsWorkbook(
+      XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' })
+    );
+    expect(parsed.primaryRows).toBe(1);
+    expect(parsed.fallbackRows).toBe(1);
+    expect(
+      parsed.profiles.find(
+        (profile) => profile.sourceSheet === 'Intern Details'
+      )
+    ).toMatchObject({
+      joiningDate: '2026-08-11',
+      endingDate: '2026-11-11',
+      sourcePriority: 2,
+    });
+  });
+});
+
+describe('effective completion date extensions', () => {
+  const {
+    buildActiveAccountPlan,
+  } = require('../../src/modules/workbook-imports/service');
+
+  test('uses the newest attendance sheet completion date for extensions', () => {
+    const workbook = XLSX.utils.book_new();
+    addSheet(workbook, 'Attendance - June', [
+      ['NAME', 'Intern Code', 'Contact Info ', 'Status', 'Completion Date'],
+      ['Extended Intern', 'INT-900', '9000000900', 'Active', '2026-07-13'],
+    ]);
+    addSheet(workbook, 'Attendance - August', [
+      ['NAME', 'Intern Code', 'Contact Info ', 'Status', 'Completion Date'],
+      ['Extended Intern', 'INT-900', '9000000900', 'Active', '2026-10-13'],
+    ]);
+    const preview = previewWorkbook(
+      XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' })
+    );
+    const intern = preview.interns[0];
+    expect(intern.completionDate).toBe('2026-10-13');
+    expect(intern.latestCompletionDateSource).toMatchObject({
+      sheet: 'Attendance - August',
+      row: 2,
+      date: '2026-10-13',
+    });
+
+    const plan = buildActiveAccountPlan(
+      [
+        {
+          ...intern,
+          email: 'extended@college.edu',
+          profileEndingDate: '2026-07-13',
+        },
+      ],
+      {
+        department: { id: 'department-1', name: 'AI Tutor' },
+        manager: { id: 'manager-1', full_name: 'Manager' },
+        existingInterns: [],
+      },
+      {
+        departmentId: 'department-1',
+        managerId: 'manager-1',
+        asOfDate: '2026-08-23',
+      }
+    );
+    expect(plan.counts.accountPlanStatusVerification).toBe(0);
+    expect(plan.counts.accountPlanEligible).toBe(1);
+  });
+
+  test('does not fall back to an email profile ending date', () => {
+    const plan = buildActiveAccountPlan(
+      [
+        {
+          key: 'phone:9000000901',
+          name: 'Profile Only',
+          code: 'INT-901',
+          phone: '9000000901',
+          email: 'profile@college.edu',
+          workbookStatus: 'Active',
+          lifecycle: null,
+          attendance: [],
+          completionDate: null,
+          profileEndingDate: '2026-07-01',
+        },
+      ],
+      {
+        department: { id: 'department-1' },
+        manager: { id: 'manager-1' },
+        existingInterns: [],
+      },
+      {
+        departmentId: 'department-1',
+        managerId: 'manager-1',
+        asOfDate: '2026-08-23',
+      }
+    );
+    expect(plan.counts.accountPlanEligible).toBe(1);
+    expect(plan.counts.accountPlanStatusVerification).toBe(0);
+  });
+});
+
+describe('completion history safety', () => {
+  const {
+    buildActiveAccountPlan,
+  } = require('../../src/modules/workbook-imports/service');
+
+  test('detects extensions from attendance history without a profile ending date', () => {
+    const workbook = XLSX.utils.book_new();
+    addSheet(workbook, 'Attendance - June', [
+      ['NAME', 'Intern Code', 'Contact Info ', 'Status', 'Completion Date'],
+      ['Extended Intern', 'INT-910', '9000000910', 'Active', '2026-07-13'],
+    ]);
+    addSheet(workbook, 'Attendance - August', [
+      ['NAME', 'Intern Code', 'Contact Info ', 'Status', 'Completion Date'],
+      ['Extended Intern', 'INT-910', '9000000910', 'Active', '2026-10-13'],
+    ]);
+    const intern = previewWorkbook(
+      XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' })
+    ).interns[0];
+    expect(intern.extensionDetectedFromAttendance).toBe(true);
+    expect(intern.completionDateHistory.map((source) => source.date)).toEqual([
+      '2026-07-13',
+      '2026-10-13',
+    ]);
+    const plan = buildActiveAccountPlan(
+      [{ ...intern, email: 'extended@college.edu' }],
+      {
+        department: { id: 'department-1', name: 'AI Tutor' },
+        manager: { id: 'manager-1', full_name: 'Manager' },
+        existingInterns: [],
+      },
+      {
+        departmentId: 'department-1',
+        managerId: 'manager-1',
+        asOfDate: '2026-08-23',
+      }
+    );
+    expect(plan.counts.accountPlanEligible).toBe(1);
+    expect(plan.counts.accountPlanStatusVerification).toBe(0);
+  });
+
+  test('requires completion review when duplicate rows in one month disagree', () => {
+    const workbook = XLSX.utils.book_new();
+    addSheet(workbook, 'Attendance - August', [
+      ['NAME', 'Intern Code', 'Contact Info ', 'Status', 'Completion Date'],
+      ['Duplicate Intern', 'INT-911', '9000000911', 'Active', '2026-10-13'],
+      ['Duplicate Intern', 'INT-911', '9000000911', 'Active', '2026-11-13'],
+    ]);
+    const intern = previewWorkbook(
+      XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' })
+    ).interns[0];
+    expect(intern.completionReviewReasons).toContain(
+      'COMPLETION_DATE_CONFLICT'
+    );
+    const plan = buildActiveAccountPlan(
+      [{ ...intern, email: 'duplicate@college.edu' }],
+      {
+        department: { id: 'department-1', name: 'AI Tutor' },
+        manager: { id: 'manager-1', full_name: 'Manager' },
+        existingInterns: [],
+      },
+      {
+        departmentId: 'department-1',
+        managerId: 'manager-1',
+        asOfDate: '2026-08-23',
+      }
+    );
+    expect(plan.counts.accountPlanEligible).toBe(0);
+    expect(plan.counts.accountPlanManualReview).toBe(1);
+    expect(plan.manualReview[0].reasons).toContain('COMPLETION_DATE_CONFLICT');
+  });
+
+  test('ignores numeric Extension cells as calculation metadata', () => {
+    const workbook = XLSX.utils.book_new();
+    addSheet(workbook, 'Attendance - August', [
+      [
+        'NAME',
+        'Intern Code',
+        'Contact Info ',
+        'Status',
+        'Completion Date',
+        'Extension',
+      ],
+      [
+        'Extension Calculation',
+        'INT-912',
+        '9000000912',
+        'Active',
+        '2026-10-15',
+        12,
+      ],
+    ]);
+    const intern = previewWorkbook(
+      XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' })
+    ).interns[0];
+    expect(intern.extensionEvidence).toEqual([]);
+    expect(intern.completionReviewReasons).not.toContain(
+      'EXTENSION_DATE_MISSING'
+    );
+  });
+
+  test('masks phone numbers in attendance conflicts', () => {
+    const workbook = XLSX.utils.book_new();
+    addSheet(workbook, 'Attendance - August', [
+      ['NAME', 'Intern Code', 'Contact Info ', 46235],
+      ['Private Conflict', 'INT-913', '9000000913', 'PRESENT'],
+      ['Private Conflict', 'INT-913', '9000000913', 'LEAVE'],
+    ]);
+    const preview = previewWorkbook(
+      XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' })
+    );
+    expect(preview.conflicts[0].phone).toBe('******0913');
+    expect(JSON.stringify(preview.conflicts)).not.toContain('9000000913');
+  });
+});
+
+describe('attendance sheet calendar authority', () => {
+  test('uses calendar month when workbook tabs are newest first', () => {
+    const workbook = XLSX.utils.book_new();
+    addSheet(workbook, 'Attendance - Aug', [
+      [
+        'NAME',
+        'Intern Code',
+        'Contact Info ',
+        'Status',
+        'Completion Date',
+        '2026-08-01',
+      ],
+      [
+        'Reverse Tab Intern',
+        'INT-920',
+        '9000000920',
+        'Active',
+        '2026-10-17',
+        'PRESENT',
+      ],
+    ]);
+    addSheet(workbook, 'Attendance - June', [
+      [
+        'NAME',
+        'Intern Code',
+        'Contact Info ',
+        'Status',
+        'Completion Date',
+        '2026-06-01',
+      ],
+      [
+        'Reverse Tab Intern',
+        'INT-920',
+        '9000000920',
+        'Active',
+        '2026-07-17',
+        'PRESENT',
+      ],
+    ]);
+    const intern = previewWorkbook(
+      XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' })
+    ).interns[0];
+    expect(intern.completionDate).toBe('2026-10-17');
+    expect(intern.latestCompletionDateSource.sheet).toBe('Attendance - Aug');
+    expect(intern.extensionDetectedFromAttendance).toBe(true);
   });
 });

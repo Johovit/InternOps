@@ -16,7 +16,7 @@ module.exports = async function globalSetup() {
 
     const hash = await argon2.hash(SEEDED_ADMIN_PASSWORD);
     await pool.query(
-      'UPDATE users SET password_hash = $1 WHERE lower(email) = lower($2)',
+      'UPDATE users SET password_hash = $1, suspended = FALSE, deleted_at = NULL, must_change_password = FALSE WHERE lower(email) = lower($2)',
       [hash, SEEDED_ADMIN_EMAIL]
     );
 

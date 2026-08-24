@@ -1,6 +1,12 @@
 const pool = require('../../config/db');
+const { assertActivityAllowed } = require('../team/lifecycle');
 
 async function addRating(rated, by, score, remarks) {
+  await assertActivityAllowed(
+    pool,
+    rated,
+    new Date().toISOString().slice(0, 10)
+  );
   const res = await pool.query(
     'INSERT INTO ratings (rated_user_id, rated_by, score, remarks) VALUES ($1,$2,$3,$4) RETURNING *',
     [rated, by, score, remarks]

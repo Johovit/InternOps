@@ -54,7 +54,7 @@ async function routes(fastify) {
   fastify.get(
     '/:deptId/teams',
     {
-      preHandler: [auth, rbac('ADMIN')],
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],
       schema: {
         tags: ['Departments'],
         description: 'List department teams by lead',
@@ -66,6 +66,12 @@ async function routes(fastify) {
       },
     },
     async (req, reply) => {
+      if (
+        req.user.role === 'SENIOR_TL' &&
+        req.user.departmentId !== req.params.deptId
+      ) {
+        return reply.status(403).send({ error: 'Forbidden' });
+      }
       const parsed = z
         .object({ deptId: z.string().uuid() })
         .safeParse(req.params);

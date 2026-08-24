@@ -24,14 +24,49 @@ const detailFields = {
   year_of_study: z.string().max(50).optional(),
   position: z.string().max(255).optional(),
   joining_date: z.string().max(20).optional(),
+  lifecycle_effective_date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .nullable()
+    .optional(),
+  completion_date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .nullable()
+    .optional(),
+  extended_completion_date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .nullable()
+    .optional(),
   internship_status: z
-    .enum(['ACTIVE', 'COMPLETED', 'ON_HOLD', 'TERMINATED'])
+    .enum(['ACTIVE', 'COMPLETED', 'ON_HOLD', 'TERMINATED', 'DISCONTINUED'])
     .optional(),
   location: z.string().max(255).optional(),
   notes: z.string().max(2000).optional(),
 };
 
-const updateSchema = z.object(detailFields);
+const updateSchema = z.object(detailFields).superRefine((data, ctx) => {
+  if (
+    data.internship_status === 'COMPLETED' &&
+    !data.completion_date &&
+    !data.extended_completion_date
+  )
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['completion_date'],
+      message: 'Completion date is required',
+    });
+  if (
+    ['TERMINATED', 'DISCONTINUED'].includes(data.internship_status) &&
+    !data.lifecycle_effective_date
+  )
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['lifecycle_effective_date'],
+      message: 'Effective date is required',
+    });
+});
 const createSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),

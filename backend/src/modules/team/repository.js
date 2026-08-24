@@ -5,7 +5,7 @@ const argon2 = require('argon2');
 const MEMBER_COLUMNS = `
   u.id, u.email, u.role, u.full_name, u.suspended, u.avatar_url, u.created_at,
   u.department_id, u.manager_id, u.phone, u.college, u.course, u.year_of_study,
-  u.position, u.joining_date, u.internship_status, u.location, u.notes
+  u.position, u.joining_date, u.internship_status, u.lifecycle_effective_date, u.completion_date, u.extended_completion_date, u.location, u.notes
 `;
 
 // Performance summary (attendance %, avg rating, verified tasks) joined per member.
@@ -15,7 +15,8 @@ const PERFORMANCE_JOINS = `
   LEFT JOIN (
     SELECT user_id,
            COUNT(*) FILTER (WHERE status = 'PRESENT')  AS present_count,
-           COUNT(*) FILTER (WHERE status = 'HALF_DAY') AS half_day_count,
+           COUNT(*) FILTER (WHERE status = 'INFORMED') AS informed_count,
+           COUNT(*) FILTER (WHERE status = 'LEAVE')    AS leave_count,
            COUNT(*)                                    AS attendance_total
     FROM attendance WHERE deleted_at IS NULL GROUP BY user_id
   ) att ON att.user_id = u.id
@@ -36,7 +37,8 @@ const PERFORMANCE_COLUMNS = `
   m.full_name AS manager_name,
   d.name AS department_name,
   COALESCE(att.present_count, 0)   AS present_count,
-  COALESCE(att.half_day_count, 0)  AS half_day_count,
+  COALESCE(att.informed_count, 0) AS informed_count,
+  COALESCE(att.leave_count, 0)    AS leave_count,
   COALESCE(att.attendance_total, 0) AS attendance_total,
   rat.avg_rating,
   COALESCE(rat.rating_count, 0)    AS rating_count,
@@ -61,7 +63,15 @@ async function getTeamMembers(managerId, departmentId) {
     JOIN users u ON u.id = t.id
     ${PERFORMANCE_JOINS}
     WHERE ($2::uuid IS NULL OR u.department_id = $2)
-    ORDER BY t.depth, u.role, u.full_name
+    ORDER BY
+      CASE u.role
+        WHEN 'SENIOR_TL' THEN 0
+        WHEN 'TL' THEN 1
+        WHEN 'CAPTAIN' THEN 2
+        WHEN 'INTERN' THEN 3
+        ELSE 4
+      END,
+      LOWER(COALESCE(u.full_name, u.email))
   `;
   const { rows } = await pool.query(query, [managerId, departmentId || null]);
   return rows;
@@ -86,6 +96,9 @@ const EDITABLE_FIELDS = [
   'year_of_study',
   'position',
   'joining_date',
+  'lifecycle_effective_date',
+  'completion_date',
+  'extended_completion_date',
   'internship_status',
   'location',
   'notes',

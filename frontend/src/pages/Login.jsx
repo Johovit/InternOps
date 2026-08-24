@@ -80,7 +80,7 @@ export default function Login() {
       api.post('/auth/login', creds).then((res) => res.data),
     onSuccess: (data) => {
       setAuth({ accessToken: data.accessToken, user: data.user });
-      navigate('/');
+      navigate(data.user?.mustChangePassword ? '/profile' : '/');
     },
     onError: (err) => setError(err.response?.data?.error || 'Login failed'),
   });

@@ -32,7 +32,7 @@ async function routes(fastify) {
           date: z
             .string()
             .regex(/^\d{4}-\d{2}-\d{2}$/, 'date must be YYYY-MM-DD'),
-          status: z.enum(['PRESENT', 'ABSENT', 'HALF_DAY']),
+          status: z.enum(['PRESENT', 'ABSENT', 'INFORMED']),
           remarks: z.string().max(500).optional(),
         });
         const parsed = schema.safeParse(req.body);
@@ -109,6 +109,8 @@ async function routes(fastify) {
         return reply.status(201).send(attendance);
       } catch (err) {
         req.log.error(err, 'Error in POST /attendance/mark');
+        if (err.statusCode)
+          return reply.status(err.statusCode).send({ error: err.message });
         return reply.status(500).send({ error: 'Internal server error' });
       }
     }
@@ -129,7 +131,7 @@ async function routes(fastify) {
           date: z
             .string()
             .regex(/^\d{4}-\d{2}-\d{2}$/, 'date must be YYYY-MM-DD'),
-          status: z.enum(['PRESENT', 'ABSENT', 'HALF_DAY']),
+          status: z.enum(['PRESENT', 'ABSENT', 'INFORMED']),
           remarks: z.string().max(500).optional(),
         });
         const bodySchema = z.object({
@@ -213,6 +215,8 @@ async function routes(fastify) {
         };
       } catch (err) {
         req.log.error(err, 'Error in POST /attendance/bulk');
+        if (err.statusCode)
+          return reply.status(err.statusCode).send({ error: err.message });
         return reply.status(500).send({ error: 'Internal server error' });
       }
     }
@@ -342,13 +346,37 @@ async function routes(fastify) {
           const department_id = req.query?.department_id;
           if (department_id) {
             const res = await pool.query(
-              'SELECT id, full_name, email, role, department_id FROM users WHERE deleted_at IS NULL AND department_id = $1',
+              `SELECT id, full_name, email, role, department_id
+               FROM users
+               WHERE deleted_at IS NULL AND department_id = $1
+               ORDER BY CASE role
+                 WHEN 'ADMIN' THEN 0
+                 WHEN 'SENIOR_TL' THEN 1
+                 WHEN 'TL' THEN 2
+                 WHEN 'CAPTAIN' THEN 3
+                 WHEN 'INTERN' THEN 4
+                 ELSE 5
+               END,
+               LOWER(COALESCE(NULLIF(TRIM(full_name), ''), email)),
+               LOWER(email), id`,
               [department_id]
             );
             return res.rows;
           }
           const all = await pool.query(
-            'SELECT id, full_name, email, role, department_id FROM users WHERE deleted_at IS NULL'
+            `SELECT id, full_name, email, role, department_id
+             FROM users
+             WHERE deleted_at IS NULL
+             ORDER BY CASE role
+               WHEN 'ADMIN' THEN 0
+               WHEN 'SENIOR_TL' THEN 1
+               WHEN 'TL' THEN 2
+               WHEN 'CAPTAIN' THEN 3
+               WHEN 'INTERN' THEN 4
+               ELSE 5
+             END,
+             LOWER(COALESCE(NULLIF(TRIM(full_name), ''), email)),
+             LOWER(email), id`
           );
           return all.rows;
         }

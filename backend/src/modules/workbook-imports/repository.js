@@ -34,7 +34,38 @@ async function getExistingAttendance(userIds, from, to, client = pool) {
   return result.rows;
 }
 
+async function getAccountPlanContext(departmentId, managerId, client = pool) {
+  const [departmentResult, managerResult, usersResult] = await Promise.all([
+    client.query(
+      `SELECT id, name
+       FROM departments
+       WHERE id = $1 AND deleted_at IS NULL`,
+      [departmentId]
+    ),
+    client.query(
+      `SELECT id, full_name, email, role, department_id
+       FROM users
+       WHERE id = $1
+         AND role IN ('SENIOR_TL', 'TL')
+         AND deleted_at IS NULL`,
+      [managerId]
+    ),
+    client.query(
+      `SELECT id, email, phone, full_name, role, department_id, manager_id
+       FROM users
+       WHERE deleted_at IS NULL
+         AND role = 'INTERN'`
+    ),
+  ]);
+  return {
+    department: departmentResult.rows[0] || null,
+    manager: managerResult.rows[0] || null,
+    existingInterns: usersResult.rows,
+  };
+}
+
 module.exports = {
   getExistingInterns,
   getExistingAttendance,
+  getAccountPlanContext,
 };

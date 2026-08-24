@@ -1,4 +1,5 @@
 const pool = require('../../config/db');
+const { assertActivityAllowed } = require('../team/lifecycle');
 async function createTask({
   title,
   description,
@@ -46,6 +47,12 @@ async function createTask({
 
 async function assignTask(taskId, userIds, assignedBy) {
   if (!userIds || userIds.length === 0) return;
+  for (const userId of userIds)
+    await assertActivityAllowed(
+      pool,
+      userId,
+      new Date().toISOString().slice(0, 10)
+    );
   const values = userIds
     .map((_, i) => `($1, $${i + 2}, $${userIds.length + 2})`)
     .join(',');
@@ -77,6 +84,7 @@ async function getAllInternEmails(limit = 500, offset = 0) {
     `SELECT email
      FROM users
      WHERE role IN ('INTERN', 'CAPTAIN')
+       AND COALESCE(internship_status,'ACTIVE') = 'ACTIVE'
        AND email IS NOT NULL
      ORDER BY id
      LIMIT $1 OFFSET $2`,
@@ -91,6 +99,7 @@ async function getInternEmailCount() {
     `SELECT COUNT(*)::int AS count
      FROM users
      WHERE role IN ('INTERN', 'CAPTAIN')
+       AND COALESCE(internship_status,'ACTIVE') = 'ACTIVE'
        AND email IS NOT NULL`
   );
   return res.rows[0].count;

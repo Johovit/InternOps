@@ -106,6 +106,100 @@ async function deleteDepartment(id, force = false) {
   };
 }
 
+async function handoverDepartmentLead(
+  departmentId,
+  outgoingLeadId,
+  replacementId,
+  actorId,
+  suspendOutgoing = false
+) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [
+      `department-handover:${departmentId}`,
+    ]);
+    const { rows } = await client.query(
+      `SELECT id,role,department_id,suspended,deleted_at,full_name
+       FROM users WHERE id=ANY($1::uuid[]) FOR UPDATE`,
+      [[outgoingLeadId, replacementId]]
+    );
+    const outgoing = rows.find((user) => user.id === outgoingLeadId);
+    const replacement = rows.find((user) => user.id === replacementId);
+    if (
+      !outgoing ||
+      !replacement ||
+      outgoing.deleted_at ||
+      replacement.deleted_at
+    )
+      throw Object.assign(
+        new Error('Outgoing or replacement user was not found'),
+        { statusCode: 404 }
+      );
+    if (
+      !['TL', 'SENIOR_TL'].includes(outgoing.role) ||
+      outgoing.department_id !== departmentId
+    )
+      throw Object.assign(
+        new Error('Outgoing user is not a lead of this project group'),
+        { statusCode: 409 }
+      );
+    if (replacement.suspended || replacement.department_id !== departmentId)
+      throw Object.assign(
+        new Error('Replacement must be active in the same project group'),
+        { statusCode: 409 }
+      );
+    if (!['INTERN', 'CAPTAIN', 'TL', 'SENIOR_TL'].includes(replacement.role))
+      throw Object.assign(
+        new Error('Replacement role is not eligible for TL handover'),
+        { statusCode: 409 }
+      );
+    const nextManagerId = outgoing.manager_id || null;
+    await client.query(
+      `UPDATE users SET role='TL',manager_id=$1,updated_at=NOW() WHERE id=$2`,
+      [nextManagerId, replacementId]
+    );
+    const reassigned = await client.query(
+      `UPDATE users SET manager_id=$1,updated_at=NOW()
+       WHERE manager_id=$2 AND id<>$1 AND deleted_at IS NULL`,
+      [replacementId, outgoingLeadId]
+    );
+    if (suspendOutgoing) {
+      await client.query(
+        `UPDATE users SET suspended=TRUE,updated_at=NOW() WHERE id=$1`,
+        [outgoingLeadId]
+      );
+    }
+    await client.query(
+      `INSERT INTO audit_logs(user_id,action,resource_type,resource_id,details)
+       VALUES($1,'DEPARTMENT_TL_HANDOVER','department',$2,$3)`,
+      [
+        actorId,
+        departmentId,
+        JSON.stringify({
+          outgoingLeadId,
+          replacementId,
+          reassignedUsers: reassigned.rowCount,
+          suspendOutgoing,
+        }),
+      ]
+    );
+    await client.query('COMMIT');
+    return {
+      success: true,
+      outgoingLeadId,
+      replacementId,
+      reassignedUsers: reassigned.rowCount,
+      outgoingSuspended: suspendOutgoing,
+    };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 module.exports = {
   createDepartment,
   getAll,

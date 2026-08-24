@@ -50,7 +50,18 @@ async function listUsersPaginated({
            department_id, manager_id
     FROM users
     ${whereSql}
-    ORDER BY created_at DESC
+    ORDER BY
+      CASE role
+        WHEN 'ADMIN' THEN 0
+        WHEN 'SENIOR_TL' THEN 1
+        WHEN 'TL' THEN 2
+        WHEN 'CAPTAIN' THEN 3
+        WHEN 'INTERN' THEN 4
+        ELSE 5
+      END,
+      LOWER(COALESCE(NULLIF(TRIM(full_name), ''), email)),
+      LOWER(email),
+      id
     LIMIT $${params.length + 1} OFFSET $${params.length + 2}
   `;
 

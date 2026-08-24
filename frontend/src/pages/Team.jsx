@@ -28,7 +28,13 @@ const ROLE_BADGE = {
     'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-100 border border-slate-200 dark:border-slate-500',
 };
 
-const STATUS_OPTIONS = ['ACTIVE', 'COMPLETED', 'ON_HOLD', 'TERMINATED'];
+const STATUS_OPTIONS = [
+  'ACTIVE',
+  'ON_HOLD',
+  'COMPLETED',
+  'TERMINATED',
+  'DISCONTINUED',
+];
 
 const STATUS_BADGE = {
   ACTIVE:
@@ -43,6 +49,13 @@ const STATUS_BADGE = {
 
 // A manager may add any member ranked below themselves.
 const ROLE_RANK = { ADMIN: 4, SENIOR_TL: 3, TL: 2, CAPTAIN: 1, INTERN: 0 };
+const DISPLAY_ROLE_ORDER = {
+  SENIOR_TL: 0,
+  TL: 1,
+  CAPTAIN: 2,
+  INTERN: 3,
+  ADMIN: 4,
+};
 const ASSIGNABLE = ['SENIOR_TL', 'TL', 'CAPTAIN', 'INTERN'];
 
 function rolesBelow(role) {
@@ -51,11 +64,11 @@ function rolesBelow(role) {
 }
 
 function attendancePct(m) {
-  const total = Number(m.attendance_total) || 0;
-  if (!total) return null;
-
-  const score = Number(m.present_count) + Number(m.half_day_count) * 0.5;
-  return Math.round((score / total) * 100);
+  const total = Number(m.attendance_total);
+  const present = Number(m.present_count);
+  if (!Number.isFinite(total) || total <= 0) return null;
+  if (!Number.isFinite(present) || present < 0) return 0;
+  return Math.max(0, Math.min(100, Math.round((present / total) * 100)));
 }
 
 function pctColor(p) {
@@ -120,6 +133,17 @@ const EDIT_FIELDS = [
   { key: 'year_of_study', label: 'Year of study' },
   { key: 'position', label: 'Position / Designation' },
   { key: 'joining_date', label: 'Joining date', type: 'date' },
+  { key: 'completion_date', label: 'Completion date', type: 'date' },
+  {
+    key: 'extended_completion_date',
+    label: 'Extended completion date',
+    type: 'date',
+  },
+  {
+    key: 'lifecycle_effective_date',
+    label: 'Termination / discontinuation effective date',
+    type: 'date',
+  },
   { key: 'internship_status', label: 'Status', type: 'select' },
   { key: 'notes', label: 'Notes', type: 'textarea' },
 ];
@@ -1218,16 +1242,25 @@ export default function Team() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-
-    return members.filter((m) => {
-      if (roleFilter && m.role !== roleFilter) return false;
-
-      if (!q) return true;
-
-      return [m.full_name, m.email, m.college, m.position].some((v) =>
-        (v || '').toLowerCase().includes(q)
-      );
-    });
+    return members
+      .filter((m) => {
+        if (roleFilter && m.role !== roleFilter) return false;
+        if (!q) return true;
+        return [m.full_name, m.email, m.college, m.position].some((v) =>
+          (v || '').toLowerCase().includes(q)
+        );
+      })
+      .sort((a, b) => {
+        const roleDifference =
+          (DISPLAY_ROLE_ORDER[a.role] ?? 99) -
+          (DISPLAY_ROLE_ORDER[b.role] ?? 99);
+        if (roleDifference) return roleDifference;
+        return String(a.full_name || a.email || '').localeCompare(
+          String(b.full_name || b.email || ''),
+          undefined,
+          { sensitivity: 'base' }
+        );
+      });
   }, [members, search, roleFilter]);
 
   const roles = useMemo(

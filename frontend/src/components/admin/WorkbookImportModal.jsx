@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   CheckCircle2,
   FileSpreadsheet,
   LockKeyhole,
+  Maximize2,
+  Minimize2,
   RefreshCw,
   Search,
   ShieldAlert,
@@ -29,7 +31,32 @@ const SUMMARY_LABELS = {
   databaseNewAttendance: 'New attendance',
   databaseUnchangedAttendance: 'Attendance unchanged',
   databaseAttendanceConflicts: 'Neon attendance conflicts',
-  databaseUnmatchedAttendance: 'Unmatched attendance',
+  databaseUnmatchedAttendance: 'Workbook attendance awaiting account creation',
+  accountPlanTotal: 'Workbook interns',
+  accountPlanActive: 'Active interns',
+  accountPlanEligible: 'Accounts eligible',
+  accountPlanNonActiveExcluded: 'Non-active excluded',
+  accountPlanMissingEmail: 'Missing email',
+  accountPlanInvalidGmail: 'Invalid email',
+  accountPlanMissingInternCode: 'Missing intern code',
+  accountPlanExistingUser: 'Existing users',
+  accountPlanExistingLeadershipReused: 'Existing leadership accounts reused',
+  accountPlanPeopleReceivingAttendance: 'People receiving attendance',
+  accountPlanManualReview: 'Manual review',
+  accountPlanAttendanceExcluded: 'Non-active attendance excluded',
+  accountPlanAttendanceToImport: 'Active attendance to import',
+  sheet: 'Primary email sheet',
+  fallbackSheet: 'Fallback email sheet',
+  primaryRows: 'Primary email rows',
+  fallbackRows: 'Fallback email rows',
+  emailProfileRows: 'Email profile rows',
+  emailMatchedByPhone: 'Emails matched by mobile',
+  emailMatchedByCode: 'Emails matched by intern code',
+  emailUnmatchedActive: 'Unmatched active interns',
+  emailIdentityConflicts: 'Email identity conflicts',
+  emailInvalidOrMissing: 'Invalid or missing profile email',
+  emailMatchedFromInternDetails: 'Emails from Intern Details fallback',
+  accountPlanStatusVerification: 'Status verification required',
 };
 
 const STATUS_STYLES = {
@@ -91,12 +118,29 @@ function AttendanceBadge({ value }) {
 
 export default function WorkbookImportModal({ open, onClose }) {
   const [file, setFile] = useState(null);
+  const [emailFile, setEmailFile] = useState(null);
   const [preview, setPreview] = useState(null);
   const [resolutions, setResolutions] = useState({});
   const [error, setError] = useState('');
+  const [duplicateReview, setDuplicateReview] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState(null);
   const [search, setSearch] = useState('');
   const [visibleRows, setVisibleRows] = useState(20);
+  const [departmentId, setDepartmentId] = useState('');
+  const [managerId, setManagerId] = useState('');
+  const [departments, setDepartments] = useState([]);
+  const [managers, setManagers] = useState([]);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const modalBodyRef = useRef(null);
+
+  const toggleExpanded = () => {
+    setIsExpanded((current) => !current);
+    requestAnimationFrame(() => {
+      modalBodyRef.current?.scrollTo({ top: 0, behavior: 'auto' });
+    });
+  };
 
   useEffect(() => {
     if (!open) return undefined;
@@ -106,6 +150,26 @@ export default function WorkbookImportModal({ open, onClose }) {
       document.body.style.overflow = previousOverflow;
     };
   }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    api
+      .get('/departments')
+      .then((response) => setDepartments(response.data || []))
+      .catch(() => setDepartments([]));
+  }, [open]);
+
+  useEffect(() => {
+    if (!departmentId) {
+      setManagers([]);
+      setManagerId('');
+      return;
+    }
+    api
+      .get(`/departments/${departmentId}/teams`)
+      .then((response) => setManagers(response.data || []))
+      .catch(() => setManagers([]));
+  }, [departmentId]);
 
   const unresolvedCount = useMemo(() => {
     if (!preview) return 0;
@@ -124,21 +188,37 @@ export default function WorkbookImportModal({ open, onClose }) {
     );
   }, [preview, search]);
 
+  const accountPlanDisplayCounts = useMemo(() => {
+    if (!preview?.accountPlan) return [];
+    const counts = { ...preview.accountPlan.counts };
+    const allAttendance = Number(preview.summary?.attendanceRecords || 0);
+    const activeAttendance = Number(counts.accountPlanAttendanceToImport || 0);
+    counts.accountPlanAttendanceExcluded = Math.max(
+      0,
+      allAttendance - activeAttendance
+    );
+    return Object.entries(counts);
+  }, [preview]);
+
   if (!open) return null;
 
   const clearFile = () => {
     setFile(null);
+    setEmailFile(null);
     setPreview(null);
     setResolutions({});
     setSearch('');
     setVisibleRows(20);
     setError('');
+    setDuplicateReview([]);
+    setImportResult(null);
   };
 
   const runPreview = async () => {
     if (!file) return;
     setLoading(true);
     setError('');
+    setDuplicateReview([]);
     setPreview(null);
     setResolutions({});
     setSearch('');
@@ -146,12 +226,18 @@ export default function WorkbookImportModal({ open, onClose }) {
     try {
       const form = new FormData();
       form.append('workbook', file);
+      if (emailFile) form.append('emailWorkbook', emailFile);
       const response = await api.post('/workbook-imports/preview', form, {
+        params: {
+          departmentId: departmentId || undefined,
+          managerId: managerId || undefined,
+        },
         headers: { 'Content-Type': 'multipart/form-data' },
         timeout: 60000,
         _suppressGlobalError: true,
       });
       setPreview(response.data);
+      setImportResult(null);
     } catch (requestError) {
       setError(
         requestError.response?.data?.error ||
@@ -166,14 +252,79 @@ export default function WorkbookImportModal({ open, onClose }) {
   const chooseResolution = (conflictId, value) => {
     setResolutions((current) => ({ ...current, [conflictId]: value }));
   };
+
+  const canImport = Boolean(
+    preview &&
+    file &&
+    emailFile &&
+    departmentId &&
+    managerId &&
+    preview.emailPreviewFingerprint &&
+    preview.accountPlan?.writesAllowed &&
+    !preview.importBlocked &&
+    unresolvedCount === 0 &&
+    !loading &&
+    !importing &&
+    !importResult
+  );
+
+  const runImport = async () => {
+    if (!canImport) return;
+    const active = preview.accountPlan.counts.accountPlanActive || 0;
+    const attendance =
+      preview.accountPlan.counts.accountPlanAttendanceToImport || 0;
+    const confirmed = window.confirm(
+      `Import ${active} current intern(s) and ${attendance} attendance record(s) into Neon? Ratings are not included. This operation is transactional.`
+    );
+    if (!confirmed) return;
+
+    setImporting(true);
+    setError('');
+    setDuplicateReview([]);
+    try {
+      const form = new FormData();
+      form.append('workbook', file);
+      form.append('emailWorkbook', emailFile);
+      const response = await api.post('/workbook-imports/execute', form, {
+        params: {
+          departmentId,
+          managerId,
+          previewFingerprint: preview.previewFingerprint,
+          emailPreviewFingerprint: preview.emailPreviewFingerprint,
+        },
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 600000,
+        _suppressGlobalError: true,
+      });
+      setImportResult(response.data);
+    } catch (requestError) {
+      setDuplicateReview(requestError.response?.data?.duplicates || []);
+      setError(
+        requestError.response?.data?.error ||
+          requestError.message ||
+          'Import failed. No partial records were kept. Preview again before retrying.'
+      );
+    } finally {
+      setImporting(false);
+    }
+  };
+
   const modal = (
     <div className="fixed inset-0 z-[9999] bg-black/20 dark:bg-black/40">
-      <div className="flex h-full w-full items-center justify-center overflow-y-auto p-4">
+      <div
+        className={`flex h-full w-full items-center justify-center overflow-y-auto ${
+          isExpanded ? 'p-2' : 'p-4'
+        }`}
+      >
         <section
           aria-modal="true"
           role="dialog"
           aria-labelledby="workbook-import-title"
-          className="flex max-h-[calc(100vh-2rem)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lg shadow-slate-900/10 dark:border-slate-700 dark:bg-slate-900 dark:shadow-black/25"
+          className={`flex w-full flex-col overflow-hidden border border-slate-200 bg-white shadow-lg shadow-slate-900/10 transition-[max-width,height,max-height,border-radius] duration-200 dark:border-slate-700 dark:bg-slate-900 dark:shadow-black/25 ${
+            isExpanded
+              ? 'h-[calc(100vh-1rem)] max-h-[calc(100vh-1rem)] max-w-[calc(100vw-1rem)] rounded-xl'
+              : 'max-h-[calc(100vh-2rem)] max-w-5xl rounded-2xl'
+          }`}
         >
           <header className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 bg-white px-5 py-4 dark:border-slate-700 dark:bg-slate-900 sm:px-7 sm:py-5">
             <div className="flex min-w-0 items-center gap-3">
@@ -188,21 +339,44 @@ export default function WorkbookImportModal({ open, onClose }) {
                   Preview Intern Workbook
                 </h2>
                 <p className="text-sm text-slate-500 dark:text-slate-400">
-                  Review only. This screen cannot change Neon database records.
+                  Preview first, then import only after all safety checks pass.
                 </p>
               </div>
             </div>
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close workbook preview"
-              className="rounded-xl border border-slate-200 p-2 text-slate-600 transition hover:bg-slate-100 hover:text-slate-950 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
-            >
-              <X className="h-5 w-5" />
-            </button>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={toggleExpanded}
+                aria-label={
+                  isExpanded
+                    ? 'Restore workbook preview size'
+                    : 'Expand workbook preview'
+                }
+                title={isExpanded ? 'Restore size' : 'Expand preview'}
+                className="rounded-xl border border-slate-200 p-2 text-slate-600 transition hover:bg-slate-100 hover:text-slate-950 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+              >
+                {isExpanded ? (
+                  <Minimize2 className="h-5 w-5" />
+                ) : (
+                  <Maximize2 className="h-5 w-5" />
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Close workbook preview"
+                className="rounded-xl border border-slate-200 p-2 text-slate-600 transition hover:bg-slate-100 hover:text-slate-950 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
           </header>
 
-          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 sm:px-7">
+          <div
+            ref={modalBodyRef}
+            data-testid="workbook-modal-body"
+            className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 sm:px-7"
+          >
             <div className="space-y-5">
               <Card className="p-4 sm:p-5">
                 {!file ? (
@@ -280,17 +454,148 @@ export default function WorkbookImportModal({ open, onClose }) {
                 )}
               </Card>
 
+              <Card className="p-4 sm:p-5">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <div className="font-extrabold text-slate-900 dark:text-white">
+                      Intern Email Details workbook
+                    </div>
+                    <div className="text-sm text-slate-500 dark:text-slate-400">
+                      Used only to match email addresses. Full details is
+                      primary; Intern Details is a mobile-only fallback.
+                      Attendance records, status, and completion dates remain
+                      authoritative.
+                    </div>
+                    {emailFile && (
+                      <div className="mt-2 text-sm font-semibold text-emerald-700 dark:text-emerald-300">
+                        {emailFile.name} · {formatBytes(emailFile.size)}
+                      </div>
+                    )}
+                  </div>
+                  <label className="inline-flex shrink-0 cursor-pointer items-center gap-2 whitespace-nowrap rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100">
+                    <Upload className="h-4 w-4" />
+                    {emailFile
+                      ? 'Replace email workbook'
+                      : 'Choose email workbook'}
+                    <input
+                      type="file"
+                      accept=".xlsx"
+                      className="sr-only"
+                      onChange={(event) => {
+                        setEmailFile(event.target.files?.[0] || null);
+                        setPreview(null);
+                        setError('');
+                      }}
+                    />
+                  </label>
+                </div>
+              </Card>
+              <div className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-950/40 md:grid-cols-2">
+                <label className="text-sm font-bold text-slate-700 dark:text-slate-200">
+                  Assign to department
+                  <select
+                    value={departmentId}
+                    onChange={(event) => {
+                      setDepartmentId(event.target.value);
+                      setManagerId('');
+                      setPreview(null);
+                    }}
+                    className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-white"
+                  >
+                    <option value="">Select department</option>
+                    {departments.map((department) => (
+                      <option key={department.id} value={department.id}>
+                        {department.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="text-sm font-bold text-slate-700 dark:text-slate-200">
+                  Assign under Senior TL or TL
+                  <select
+                    value={managerId}
+                    onChange={(event) => {
+                      setManagerId(event.target.value);
+                      setPreview(null);
+                    }}
+                    disabled={!departmentId}
+                    className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-900 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-900 dark:text-white"
+                  >
+                    <option value="">Select Senior TL or TL</option>
+                    {managers.map((manager) => (
+                      <option key={manager.lead_id} value={manager.lead_id}>
+                        {manager.lead_name} ({manager.role})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <p className="text-xs text-slate-500 dark:text-slate-400 md:col-span-2">
+                  Select the department and Senior TL or TL responsible for the
+                  reviewed accounts. Preview remains read-only until import is
+                  confirmed.
+                </p>
+              </div>
+
               {loading && <Spinner label="Parsing workbook safely..." />}
               {error && (
-                <div className="flex gap-2 rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700 dark:border-red-800 dark:bg-red-950/50 dark:text-red-300">
-                  <AlertTriangle className="h-5 w-5 shrink-0" />
-                  {error}
+                <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700 dark:border-red-800 dark:bg-red-950/50 dark:text-red-300">
+                  <div className="flex gap-2">
+                    <AlertTriangle className="h-5 w-5 shrink-0" />
+                    <span>{error}</span>
+                  </div>
+                  {duplicateReview.length > 0 && (
+                    <div className="mt-3 space-y-2">
+                      {duplicateReview.map((item) => (
+                        <div
+                          key={`${item.field}-${item.value}`}
+                          className="rounded-xl border border-red-200 bg-white/70 p-3 text-sm dark:border-red-800 dark:bg-slate-900/60"
+                        >
+                          <div className="font-extrabold">
+                            Duplicate {item.label}: {item.value}
+                          </div>
+                          <div className="mt-1">
+                            {item.interns
+                              .map(
+                                (intern) =>
+                                  `${intern.name} (${intern.code || 'No Intern Code'})`
+                              )
+                              .join(' and ')}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              {importResult && (
+                <div className="rounded-2xl border border-emerald-300 bg-emerald-50 p-4 text-emerald-900 dark:border-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-100">
+                  <div className="flex items-center gap-2 font-extrabold">
+                    <CheckCircle2 className="h-5 w-5" />
+                    Import completed successfully
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
+                    {Object.entries(importResult.summary || {}).map(
+                      ([key, value]) => (
+                        <div
+                          key={key}
+                          className="rounded-xl border border-emerald-200 bg-white/70 p-2 dark:border-emerald-800 dark:bg-slate-900/50"
+                        >
+                          <div className="font-extrabold">
+                            {value.toLocaleString()}
+                          </div>
+                          <div className="text-xs">
+                            {key.replaceAll(/([A-Z])/g, ' $1').trim()}
+                          </div>
+                        </div>
+                      )
+                    )}
+                  </div>
                 </div>
               )}
 
               {preview && (
                 <>
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <div className="grid auto-rows-min gap-3 sm:grid-cols-2 lg:grid-cols-4">
                     {Object.entries(preview.summary).map(([key, value]) => (
                       <Card key={key} className="p-4">
                         <div className="text-2xl font-extrabold text-slate-950 dark:text-white">
@@ -302,6 +607,166 @@ export default function WorkbookImportModal({ open, onClose }) {
                       </Card>
                     ))}
                   </div>
+
+                  {preview.accountPlan && (
+                    <Card className="p-5 border-emerald-200 dark:border-emerald-800">
+                      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                        <div>
+                          <h4 className="text-base font-extrabold text-slate-900 dark:text-white">
+                            Reviewed account assignment
+                          </h4>
+                          <p className="text-sm text-slate-500 dark:text-slate-400">
+                            Role: INTERN · Department:{' '}
+                            {preview.accountPlan.department?.name} · Senior TL /
+                            TL: {preview.accountPlan.manager?.full_name}
+                          </p>
+                        </div>
+                        <span className="rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-bold text-amber-700 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+                          {preview.accountPlan.writesAllowed
+                            ? 'Ready after final confirmation'
+                            : 'Import blocked'}
+                        </span>
+                      </div>
+                      <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-5">
+                        {accountPlanDisplayCounts.map(([key, value]) => (
+                          <div
+                            key={key}
+                            className="rounded-xl border border-slate-200 p-3 dark:border-slate-700"
+                          >
+                            <p className="text-lg font-extrabold text-slate-900 dark:text-white">
+                              {value.toLocaleString()}
+                            </p>
+                            <p className="text-xs text-slate-500 dark:text-slate-400">
+                              {SUMMARY_LABELS[key] || key}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                      {preview.accountPlan.manualReview?.length > 0 && (
+                        <div className="mt-5 rounded-2xl border border-orange-200 bg-orange-50/60 p-4 dark:border-orange-800 dark:bg-orange-950/20">
+                          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                              <h5 className="font-extrabold text-slate-900 dark:text-white">
+                                Manual review items
+                              </h5>
+                              <p className="text-sm text-slate-600 dark:text-slate-300">
+                                Shows the exact attendance source while keeping
+                                email addresses and full phone numbers hidden.
+                              </p>
+                            </div>
+                            <span className="text-sm font-bold text-orange-700 dark:text-orange-300">
+                              {preview.accountPlan.manualReview.length} records
+                            </span>
+                          </div>
+                          <div className="mt-4 grid gap-3 md:grid-cols-2">
+                            {preview.accountPlan.manualReview.map((item) => (
+                              <div
+                                key={`${item.name}-${item.maskedPhone}-${item.reasons.join('-')}`}
+                                className="rounded-xl border border-orange-200 bg-white p-3 dark:border-orange-800 dark:bg-slate-900"
+                              >
+                                <div className="font-bold text-slate-900 dark:text-white">
+                                  {item.name}
+                                </div>
+                                <div className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                                  Mobile: {item.maskedPhone}
+                                </div>
+                                <div className="mt-2 space-y-1">
+                                  {item.sources.length > 0 ? (
+                                    item.sources.map((source) => (
+                                      <div
+                                        key={`${source.sheet}-${source.row}`}
+                                        className="text-xs text-slate-600 dark:text-slate-300"
+                                      >
+                                        Attendance source: {source.sheet}, row{' '}
+                                        {source.row}
+                                      </div>
+                                    ))
+                                  ) : (
+                                    <div className="text-xs text-slate-500 dark:text-slate-400">
+                                      Attendance source unavailable
+                                    </div>
+                                  )}
+                                </div>
+                                {(item.emailProfileSource ||
+                                  item.latestAttendanceCompletionDate ||
+                                  item.completionDateHistory?.length) && (
+                                  <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-2 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-950/40 dark:text-slate-300">
+                                    {item.emailProfileSource && (
+                                      <div>
+                                        Email profile: {item.emailProfileSource}
+                                        {item.emailProfileRow
+                                          ? `, row ${item.emailProfileRow}`
+                                          : ''}
+                                      </div>
+                                    )}
+                                    {item.latestAttendanceCompletionDate && (
+                                      <div>
+                                        Latest attendance completion date:{' '}
+                                        {formatDate(
+                                          item.latestAttendanceCompletionDate
+                                        )}
+                                        {item.latestAttendanceCompletionSource
+                                          ? ` (${item.latestAttendanceCompletionSource.sheet}, row ${item.latestAttendanceCompletionSource.row})`
+                                          : ''}
+                                      </div>
+                                    )}
+                                    {item.completionDateHistory?.length > 0 && (
+                                      <div className="mt-2">
+                                        <div className="font-bold text-slate-700 dark:text-slate-200">
+                                          Completion-date history
+                                        </div>
+                                        {item.completionDateHistory.map(
+                                          (source) => (
+                                            <div
+                                              key={`${source.sheet}-${source.row}-${source.date}`}
+                                            >
+                                              {source.sheet}, row {source.row}:{' '}
+                                              {formatDate(source.date)}
+                                            </div>
+                                          )
+                                        )}
+                                      </div>
+                                    )}
+                                    {item.effectiveCompletionDate && (
+                                      <div className="font-bold text-slate-800 dark:text-slate-100">
+                                        Effective completion date:{' '}
+                                        {formatDate(
+                                          item.effectiveCompletionDate
+                                        )}
+                                      </div>
+                                    )}
+                                    {item.extensionDetected && (
+                                      <div className="font-bold text-emerald-700 dark:text-emerald-300">
+                                        Extension detected from newer attendance
+                                        data
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                  {item.reasons.map((reason) => (
+                                    <span
+                                      key={reason}
+                                      className="rounded-full border border-orange-200 bg-orange-100 px-2.5 py-1 text-xs font-bold text-orange-800 dark:border-orange-700 dark:bg-orange-950 dark:text-orange-200"
+                                    >
+                                      {reason.replaceAll('_', ' ')}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {!preview.accountPlan.passwordChangeEnforcementReady && (
+                        <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+                          First-login password change is required by policy, but
+                          a reviewed database migration is still needed before
+                          it can be enforced. Account creation remains disabled.
+                        </p>
+                      )}
+                    </Card>
+                  )}
 
                   <Card className="overflow-hidden">
                     <div className="border-b border-slate-200 px-5 py-4 dark:border-slate-700">
@@ -338,7 +803,11 @@ export default function WorkbookImportModal({ open, onClose }) {
                               </td>
                               <td className="px-5 py-3 text-slate-600 dark:text-slate-300">
                                 {sheet.ignored
-                                  ? `Ignored: ${sheet.ignoreReason}`
+                                  ? sheet.sheet
+                                      .toLowerCase()
+                                      .startsWith('ratings')
+                                    ? 'Not included in this attendance-only import'
+                                    : `Ignored: ${sheet.ignoreReason}`
                                   : sheet.skipped
                                     ? `Skipped: ${sheet.skipReason}`
                                     : `${sheet.warnings?.length || 0} warnings`}
@@ -593,12 +1062,25 @@ export default function WorkbookImportModal({ open, onClose }) {
               </button>
               <button
                 type="button"
-                disabled
-                title="Database import will be enabled after preview validation is complete"
-                className="inline-flex cursor-not-allowed items-center gap-2 rounded-xl bg-slate-300 px-4 py-2.5 text-sm font-extrabold text-slate-600 opacity-80 dark:bg-slate-700 dark:text-slate-300"
+                onClick={runImport}
+                disabled={!canImport}
+                title={
+                  canImport
+                    ? 'Import reviewed current interns into Neon'
+                    : 'Complete a clean preview with both workbooks, department, and Senior TL or TL'
+                }
+                className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-extrabold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600 dark:bg-emerald-600 dark:hover:bg-emerald-500 dark:disabled:bg-slate-700 dark:disabled:text-slate-300"
               >
-                <LockKeyhole className="h-4 w-4" />
-                Import Not Enabled Yet
+                {importing ? (
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                ) : (
+                  <LockKeyhole className="h-4 w-4" />
+                )}
+                {importing
+                  ? 'Importing transaction...'
+                  : importResult
+                    ? 'Import completed'
+                    : 'Import current interns'}
               </button>
             </div>
           </footer>

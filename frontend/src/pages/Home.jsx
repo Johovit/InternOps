@@ -7,11 +7,11 @@ import { QUERY_KEYS } from '../constants/queryKeys';
 import { Card, StatCard, ApiErrorState } from '../components/ui';
 
 function attendancePct(m) {
-  const total = Number(m.attendance_total) || 0;
-  if (!total) return null;
-
-  const score = Number(m.present_count) + Number(m.half_day_count) * 0.5;
-  return Math.round((score / total) * 100);
+  const total = Number(m.attendance_total);
+  const present = Number(m.present_count);
+  if (!Number.isFinite(total) || total <= 0) return null;
+  if (!Number.isFinite(present) || present < 0) return 0;
+  return Math.max(0, Math.min(100, Math.round((present / total) * 100)));
 }
 
 function QuickAction({ to, icon, label, tint, description }) {
@@ -68,12 +68,15 @@ function ManagerHome({ user }) {
   const active = team.filter(
     (m) => !m.suspended && (m.internship_status || 'ACTIVE') === 'ACTIVE'
   ).length;
-
-  const pcts = team.map(attendancePct).filter((p) => p !== null);
-
-  const avgAtt = pcts.length
-    ? Math.round(pcts.reduce((a, b) => a + b, 0) / pcts.length)
+  const pcts = team
+    .map(attendancePct)
+    .filter((percentage) => Number.isFinite(percentage));
+  const averageAttendance = pcts.length
+    ? Math.round(
+        pcts.reduce((sum, percentage) => sum + percentage, 0) / pcts.length
+      )
     : null;
+  const avgAtt = Number.isFinite(averageAttendance) ? averageAttendance : null;
 
   const ratings = team
     .map((m) => m.avg_rating)
