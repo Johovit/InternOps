@@ -11,6 +11,7 @@ async function createTask({
   githubRepo,
   githubIssueUrl,
   source,
+  imagePath,
 }) {
   const hasGithubFields =
     githubIssueId || githubIssueNumber || githubRepo || githubIssueUrl;
@@ -38,8 +39,16 @@ async function createTask({
     return res.rows[0];
   }
   const res = await pool.query(
-    'INSERT INTO social_tasks (title, description, target_platform, task_link, deadline, created_by) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *',
-    [title, description, targetPlatform, taskLink, deadline, createdBy]
+    'INSERT INTO social_tasks (title, description, target_platform, task_link, deadline, created_by, image_path) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *',
+    [
+      title,
+      description,
+      targetPlatform,
+      taskLink,
+      deadline,
+      createdBy,
+      imagePath || null,
+    ]
   );
   return res.rows[0];
 }

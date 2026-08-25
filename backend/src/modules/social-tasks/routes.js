@@ -25,6 +25,7 @@ const createTaskSchema = z.object({
       (v) => !v || !Number.isNaN(Date.parse(v)),
       'deadline must be a valid ISO date'
     ),
+  imagePath: z.string().max(500).optional(),
 });
 
 const assignTaskSchema = z.object({
