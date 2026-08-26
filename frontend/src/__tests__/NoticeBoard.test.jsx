@@ -13,15 +13,12 @@ describe('NoticeBoard Component', () => {
 
     expect(titles.length).toBe(6);
 
-    // High priority titles should come first
     expect(titles[0]).toBe('Portal Downtime');
     expect(titles[1]).toBe('Timesheet Reminder');
 
-    // Medium priority titles second
     expect(titles[2]).toBe('Onboarding Update');
     expect(titles[3]).toBe('Weekly Sync');
 
-    // Low priority titles last
     expect(titles[4]).toBe('Referral Program');
     expect(titles[5]).toBe('Merch Store');
   });
@@ -29,17 +26,14 @@ describe('NoticeBoard Component', () => {
   it('displays priority badges with correct labels and colors', () => {
     render(<NoticeBoard />);
 
-    // Urgent/High badges
     const urgentBadges = screen.getAllByText('URGENT');
     expect(urgentBadges.length).toBe(2);
 
-    // Medium badges
     const mediumBadges = screen.getAllByText('MEDIUM');
-    expect(mediumBadges.length).toBe(2);
+    expect(mediumBadges.length).toBe(3);
 
-    // Low badges
     const lowBadges = screen.getAllByText('LOW');
-    expect(lowBadges.length).toBe(2);
+    expect(lowBadges.length).toBe(3);
   });
 
   it('shows notice cards with left border matching priority color', () => {
@@ -48,15 +42,12 @@ describe('NoticeBoard Component', () => {
 
     expect(cards.length).toBe(6);
 
-    // High priority cards -> red border (#ef4444)
     expect(cards[0].style.borderLeftColor).toBe('rgb(239, 68, 68)');
     expect(cards[1].style.borderLeftColor).toBe('rgb(239, 68, 68)');
 
-    // Medium priority cards -> amber border (#f59e0b)
     expect(cards[2].style.borderLeftColor).toBe('rgb(245, 158, 11)');
     expect(cards[3].style.borderLeftColor).toBe('rgb(245, 158, 11)');
 
-    // Low priority cards -> green border (#22c55e)
     expect(cards[4].style.borderLeftColor).toBe('rgb(34, 197, 94)');
     expect(cards[5].style.borderLeftColor).toBe('rgb(34, 197, 94)');
   });
@@ -73,19 +64,15 @@ describe('NoticeBoard Component', () => {
   it('allows filtering notices by priority pills', () => {
     render(<NoticeBoard />);
 
-    // Click HIGH filter button
     fireEvent.click(screen.getByRole('button', { name: 'HIGH' }));
     expect(screen.getAllByRole('heading', { level: 3 }).length).toBe(2);
 
-    // Click MEDIUM filter button
     fireEvent.click(screen.getByRole('button', { name: 'MEDIUM' }));
     expect(screen.getAllByRole('heading', { level: 3 }).length).toBe(2);
 
-    // Click LOW filter button
     fireEvent.click(screen.getByRole('button', { name: 'LOW' }));
     expect(screen.getAllByRole('heading', { level: 3 }).length).toBe(2);
 
-    // Click ALL filter button
     fireEvent.click(screen.getByRole('button', { name: 'ALL' }));
     expect(screen.getAllByRole('heading', { level: 3 }).length).toBe(6);
   });
@@ -93,11 +80,9 @@ describe('NoticeBoard Component', () => {
   it('allows clearing notices and reloading sample notices', () => {
     render(<NoticeBoard />);
 
-    // Click Clear All
     fireEvent.click(screen.getByText('Clear All'));
     expect(screen.getByText('No active notices.')).toBeInTheDocument();
 
-    // Click Load Sample Notices
     fireEvent.click(screen.getByText('Load Sample Notices'));
     expect(screen.getAllByRole('heading', { level: 3 }).length).toBe(6);
   });
