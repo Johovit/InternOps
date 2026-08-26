@@ -77,6 +77,12 @@ const nav = [
   { path: '/profile', label: 'Profile', icon: User },
   { path: '/sessions', label: 'Sessions', icon: Shield },
   {
+    path: '/internops',
+    label: 'InternOps',
+    icon: Building,
+    allowedRoles: ADMIN_AND_SENIOR_TL_ROLES,
+  },
+  {
     path: '/reports',
     label: 'Reports',
     icon: FileText,
