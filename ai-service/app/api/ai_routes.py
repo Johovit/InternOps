@@ -213,7 +213,7 @@ async def generate_text(request: GenerationRequest):
     "/generate-image",
     summary="Generate an image from an assignment topic description",
     response_model=ImageGenerationResponse,
-    dependencies=[Depends(require_roles("ADMIN", "SENIOR_TL", "TL"))],
+    dependencies=[Depends(require_permission("AI_IMAGE_GENERATION"))],
 )
 async def generate_image(
     body: ImageGenerationRequest,
