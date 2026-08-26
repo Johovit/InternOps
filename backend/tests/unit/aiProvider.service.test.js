@@ -351,6 +351,37 @@ describe('AI Provider Service', () => {
     expect(mockFetch.mock.calls[0][0]).toContain('api.openai.com');
   });
 
+  it('should attach per-provider failure reasons to the thrown error for diagnostics (#1795)', async () => {
+    jest.resetModules();
+    process.env.AI_PROVIDER_ORDER = 'gemini,groq';
+    mockConfig.ai.geminiKey = 'your-placeholder-key'; // treated as unconfigured
+    mockConfig.ai.groqKey = 'groq-key';
+    mockGetRedisClient.mockResolvedValue(null);
+    mockFetch.mockRejectedValue(new Error('groq unreachable'));
+
+    aiService = require('../../src/services/aiProviderService');
+
+    let caught;
+    try {
+      await aiService.generateAIResponse({
+        userId: 'user-diag',
+        messages: [{ role: 'user', content: 'hello' }],
+      });
+    } catch (err) {
+      caught = err;
+    }
+
+    expect(caught).toBeDefined();
+    expect(caught.message).toBe('All AI providers unavailable');
+    expect(Array.isArray(caught.details)).toBe(true);
+    expect(caught.details).toEqual([
+      { provider: 'gemini', reason: 'missing_api_key' },
+      { provider: 'groq', reason: 'groq unreachable' },
+    ]);
+
+    mockConfig.ai.geminiKey = 'gemini-key';
+  });
+
   it('should enforce LRU cache eviction limits and TTL configurations', async () => {
     jest.clearAllMocks();
     jest.resetModules();

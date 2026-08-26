@@ -25,6 +25,7 @@ const InternOpsAssistant = lazy(
 );
 const InternOps = lazy(() => import('./pages/InternOps'));
 const Reports = lazy(() => import('./pages/admin/Reports'));
+const ReportTemplates = lazy(() => import('./pages/admin/ReportTemplates'));
 const Analytics = lazy(() => import('./pages/admin/Analytics'));
 const Exports = lazy(() => import('./pages/admin/Exports'));
 const AdminDashboard = lazy(() => import('./pages/admin/AdminDashboard'));
@@ -255,6 +256,14 @@ export default function App() {
               element={
                 <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL']}>
                   <Reports />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="report-templates"
+              element={
+                <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL']}>
+                  <ReportTemplates />
                 </RoleGuard>
               }
             />

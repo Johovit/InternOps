@@ -3,17 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import api from '../lib/axios';
 import { QUERY_KEYS } from '../constants/queryKeys';
 import { Card, Spinner, ApiErrorState, Badge } from './ui';
-import {
-  Award,
-  TrendingUp,
-  AlertCircle,
-  CheckCircle,
-  HelpCircle,
-  HelpCircle as QuestionIcon,
-  Zap,
-  Target,
-  ArrowRight,
-} from 'lucide-react';
+import { Award, TrendingUp, CheckCircle, Zap, Target } from 'lucide-react';
 
 export default function AssessmentSection({ userId }) {
   const {
@@ -40,7 +30,6 @@ export default function AssessmentSection({ userId }) {
   }
 
   if (isError) {
-    // If the backend returns 404, we show a clean empty/no-assessment state
     if (error?.response?.status === 404) {
       return (
         <Card className="p-8 border border-slate-200 dark:border-slate-700 bg-gradient-to-br from-white via-slate-50 to-indigo-50/40 dark:from-slate-900 dark:via-slate-900 dark:to-slate-800/60 shadow-[0_14px_35px_rgba(15,23,42,0.04)] text-center">
@@ -70,7 +59,7 @@ export default function AssessmentSection({ userId }) {
 
   if (!assessment) return null;
 
-  const scorePct = assessment.score;
+  const scorePct = Number(assessment.score) || 0;
   const strengths = Array.isArray(assessment.key_strengths)
     ? assessment.key_strengths
     : [];
@@ -81,32 +70,26 @@ export default function AssessmentSection({ userId }) {
     ? assessment.next_actions
     : [];
 
-  // Determine indicator color based on score
   let scoreColorClass = 'text-indigo-600 dark:text-indigo-400';
   let scoreBgClass =
     'bg-indigo-50 dark:bg-indigo-950/40 border-indigo-100 dark:border-indigo-900/60';
-  let progressColor = 'bg-indigo-605';
 
   if (scorePct >= 80) {
     scoreColorClass = 'text-emerald-600 dark:text-emerald-400';
     scoreBgClass =
       'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-100 dark:border-emerald-900/40';
-    progressColor = 'bg-gradient-to-r from-emerald-500 to-teal-500';
   } else if (scorePct >= 60) {
     scoreColorClass = 'text-amber-600 dark:text-amber-400';
     scoreBgClass =
       'bg-amber-50 dark:bg-amber-950/30 border-amber-100 dark:border-amber-900/40';
-    progressColor = 'bg-gradient-to-r from-amber-400 to-orange-500';
   } else {
     scoreColorClass = 'text-rose-600 dark:text-rose-400';
     scoreBgClass =
       'bg-rose-50 dark:bg-rose-950/30 border-rose-100 dark:border-rose-900/40';
-    progressColor = 'bg-gradient-to-r from-rose-500 to-red-600';
   }
 
   return (
     <Card className="p-6 md:p-8 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none animate-fade-in-up">
-      {/* Header Block */}
       <div className="flex flex-col md:flex-row md:items-center justify-between pb-5 border-b border-slate-200 dark:border-slate-700 gap-4 mb-6">
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/60 text-indigo-600 dark:text-indigo-300 flex items-center justify-center shadow-sm">
@@ -134,13 +117,13 @@ export default function AssessmentSection({ userId }) {
         </div>
       </div>
 
-      {/* Main Score Layout & Stats */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-6">
-        {/* Score Ring Display */}
         <div className="lg:col-span-4 flex flex-col items-center justify-center p-6 rounded-3xl border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
           <div className="relative flex items-center justify-center w-32 h-32">
-            {/* SVG Circle indicator */}
-            <svg className="w-full h-full transform -rotate-90">
+            <svg
+              className="w-full h-full transform -rotate-90"
+              aria-label={`Assessment score ${scorePct}%`}
+            >
               <circle
                 cx="64"
                 cy="64"
@@ -177,15 +160,14 @@ export default function AssessmentSection({ userId }) {
           </div>
         </div>
 
-        {/* Details & AI Remarks */}
         <div className="lg:col-span-8 flex flex-col justify-between">
           <div className="space-y-4">
             <div>
               <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">
                 AI Performance Feedback
               </h4>
-              <p className="text-slate-700 dark:text-slate-350 text-sm leading-relaxed whitespace-pre-line italic">
-                "{assessment.feedback}"
+              <p className="text-slate-700 dark:text-slate-300 text-sm leading-relaxed whitespace-pre-line italic">
+                "{assessment.feedback || 'No feedback provided.'}"
               </p>
             </div>
 
@@ -202,7 +184,7 @@ export default function AssessmentSection({ userId }) {
                 <span className="block text-xs font-bold text-slate-400 uppercase tracking-wide">
                   Status
                 </span>
-                <span className="text-lg font-extrabold text-emerald-600 dark:text-emerald-400 mt-1 block flex items-center gap-1.5">
+                <span className="text-lg font-extrabold text-emerald-600 dark:text-emerald-400 mt-1 flex items-center gap-1.5">
                   <CheckCircle className="w-5 h-5 shrink-0" /> Verified
                 </span>
               </div>
@@ -211,9 +193,7 @@ export default function AssessmentSection({ userId }) {
         </div>
       </div>
 
-      {/* Strengths & Improvement Areas */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-        {/* Strengths card */}
         <div className="p-5 md:p-6 rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
           <h4 className="text-sm font-extrabold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
             <Zap className="w-5 h-5 text-emerald-500" />
@@ -232,7 +212,6 @@ export default function AssessmentSection({ userId }) {
           )}
         </div>
 
-        {/* Improvement Areas card */}
         <div className="p-5 md:p-6 rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
           <h4 className="text-sm font-extrabold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
             <TrendingUp className="w-5 h-5 text-amber-500" />
@@ -254,7 +233,6 @@ export default function AssessmentSection({ userId }) {
         </div>
       </div>
 
-      {/* Recommended Next Actions */}
       {nextActions.length > 0 && (
         <div className="p-5 md:p-6 rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
           <h4 className="text-sm font-extrabold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
@@ -270,7 +248,7 @@ export default function AssessmentSection({ userId }) {
                 <div className="w-6 h-6 rounded-lg bg-indigo-600 text-white flex items-center justify-center text-xs font-bold shrink-0 mt-0.5 shadow-sm">
                   {idx + 1}
                 </div>
-                <div className="text-sm text-slate-700 dark:text-slate-355 font-medium leading-relaxed">
+                <div className="text-sm text-slate-700 dark:text-slate-300 font-medium leading-relaxed">
                   {action}
                 </div>
               </div>

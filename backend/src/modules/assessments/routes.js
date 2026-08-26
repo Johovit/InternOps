@@ -1,11 +1,9 @@
 const auth = require('../../middleware/auth');
-const rbac = require('../../middleware/rbac');
 const service = require('./service');
 const { z } = require('zod');
 const { toSchema } = require('../../utils/schemaHelper');
 
 async function routes(fastify) {
-  // Get currently logged in user's latest assessment
   fastify.get(
     '/my-assessment',
     {
@@ -29,21 +27,18 @@ async function routes(fastify) {
     }
   );
 
-  // Admin/Manager: Get assessment by user ID (can also be called by the user themselves)
   fastify.get(
     '/user/:userId',
     {
       schema: {
         tags: ['Assessments'],
-        description: 'Get assessment by user email or ID',
+        description: "Get a user's latest assessment",
         params: toSchema(z.object({ userId: z.string().uuid() })),
       },
-      preHandler: [auth], // We check access programmatically to allow the user themselves OR managers
+      preHandler: [auth],
     },
     async (req, reply) => {
       const { userId } = req.params;
-
-      // Access control: User themselves can access, or managers/admins
       const isSelf = req.user.id === userId;
       const isManager = ['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN'].includes(
         req.user.role
