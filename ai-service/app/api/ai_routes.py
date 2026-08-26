@@ -194,12 +194,27 @@ async def chat(
 # ---------------------------------------------------------------------------
 @router.post(
     "/generate",
-    summary="Generate text with sanitized prompt",
+    summary="Generate text from a prompt or a structured conversation history",
     response_model=ProviderResult,
 )
 async def generate_text(request: GenerationRequest):
     provider = get_provider()
-    content = await provider.generate_text(request.prompt)
+
+    if request.messages:
+        # Preserve role/content structure instead of flattening the
+        # conversation into a single prompt string.
+        conversation = [
+            {"role": msg.role.value, "content": msg.content}
+            for msg in request.messages
+        ]
+        content = await provider.generate_chat(
+            conversation, temperature=request.temperature
+        )
+    else:
+        content = await provider.generate_text(
+            request.prompt, temperature=request.temperature
+        )
+
     return ProviderResult(
         provider=provider.provider_name,
         cached=False,
