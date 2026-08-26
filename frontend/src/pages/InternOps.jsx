@@ -1,44 +1,53 @@
 import React, { useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { 
-  Building2, 
-  Calendar, 
-  Search, 
-  ChevronRight, 
-  ArrowUpDown, 
-  X, 
-  TrendingUp, 
-  TrendingDown, 
-  AlertTriangle, 
+import {
+  Building2,
+  Calendar,
+  Search,
+  ChevronRight,
+  ArrowUpDown,
+  X,
+  TrendingUp,
+  TrendingDown,
+  AlertTriangle,
   CheckCircle,
   HelpCircle,
   Clock,
-  MessageSquare
+  MessageSquare,
 } from 'lucide-react';
-import { 
-  ResponsiveContainer, 
-  LineChart, 
-  Line, 
-  XAxis, 
-  YAxis, 
-  Tooltip, 
-  CartesianGrid 
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
 } from 'recharts';
 import api from '../lib/axios';
-import { Card, PageHeader, Badge, Stars, Spinner, ApiErrorState } from '../components/ui';
+import {
+  Card,
+  PageHeader,
+  Badge,
+  Stars,
+  Spinner,
+  ApiErrorState,
+} from '../components/ui';
 
 // Status styling mapping
 const STATUS_COLORS = {
-  'Good': 'green',
+  Good: 'green',
   'Attention Required': 'red',
-  'Missing Data': 'gray'
+  'Missing Data': 'gray',
 };
 
 const STATUS_ICONS = {
-  'Good': <CheckCircle className="w-4 h-4 text-emerald-500 shrink-0" />,
-  'Attention Required': <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0" />,
-  'Missing Data': <HelpCircle className="w-4 h-4 text-slate-400 shrink-0" />
+  Good: <CheckCircle className="w-4 h-4 text-emerald-500 shrink-0" />,
+  'Attention Required': (
+    <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0" />
+  ),
+  'Missing Data': <HelpCircle className="w-4 h-4 text-slate-400 shrink-0" />,
 };
 
 export default function InternOps() {
@@ -46,7 +55,7 @@ export default function InternOps() {
   const [searchText, setSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [selectedInternId, setSelectedInternId] = useState(null);
-  
+
   // Sort State
   const [sortField, setSortField] = useState('name');
   const [sortAsc, setSortAsc] = useState(true);
@@ -59,10 +68,18 @@ export default function InternOps() {
   const endDate = searchParams.get('endDate') || fallbackEnd;
 
   // React Query fetch
-  const { data: interns = [], isLoading, isError, error, refetch } = useQuery({
+  const {
+    data: interns = [],
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useQuery({
     queryKey: ['internopsSummary', startDate, endDate],
-    queryFn: () => 
-      api.get('/internops/summary', { params: { startDate, endDate } }).then(res => res.data),
+    queryFn: () =>
+      api
+        .get('/internops/summary', { params: { startDate, endDate } })
+        .then((res) => res.data),
     staleTime: 30 * 1000, // cache for 30s
   });
 
@@ -87,11 +104,19 @@ export default function InternOps() {
       start = monday.toISOString().slice(0, 10);
       end = sunday.toISOString().slice(0, 10);
     } else if (preset === 'THIS_MONTH') {
-      start = new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
-      end = new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().slice(0, 10);
+      start = new Date(d.getFullYear(), d.getMonth(), 1)
+        .toISOString()
+        .slice(0, 10);
+      end = new Date(d.getFullYear(), d.getMonth() + 1, 0)
+        .toISOString()
+        .slice(0, 10);
     } else if (preset === 'LAST_MONTH') {
-      start = new Date(d.getFullYear(), d.getMonth() - 1, 1).toISOString().slice(0, 10);
-      end = new Date(d.getFullYear(), d.getMonth(), 0).toISOString().slice(0, 10);
+      start = new Date(d.getFullYear(), d.getMonth() - 1, 1)
+        .toISOString()
+        .slice(0, 10);
+      end = new Date(d.getFullYear(), d.getMonth(), 0)
+        .toISOString()
+        .slice(0, 10);
     } else if (preset === 'DEMO_AUG_2026') {
       start = '2026-08-17';
       end = '2026-08-23';
@@ -126,20 +151,21 @@ export default function InternOps() {
     if (searchText) {
       const q = searchText.toLowerCase();
       list = list.filter(
-        i => (i.name && i.name.toLowerCase().includes(q)) || 
-             (i.email && i.email.toLowerCase().includes(q))
+        (i) =>
+          (i.name && i.name.toLowerCase().includes(q)) ||
+          (i.email && i.email.toLowerCase().includes(q))
       );
     }
 
     // Filter by status
     if (statusFilter !== 'ALL') {
-      list = list.filter(i => i.status === statusFilter);
+      list = list.filter((i) => i.status === statusFilter);
     }
 
     // Sort list
     list.sort((a, b) => {
       let valA, valB;
-      
+
       switch (sortField) {
         case 'name':
           valA = a.name || '';
@@ -173,7 +199,7 @@ export default function InternOps() {
 
   // Currently selected intern details
   const selectedIntern = useMemo(() => {
-    return interns.find(i => i.id === selectedInternId) || null;
+    return interns.find((i) => i.id === selectedInternId) || null;
   }, [interns, selectedInternId]);
 
   return (
@@ -182,7 +208,9 @@ export default function InternOps() {
       <PageHeader
         title="InternOps"
         subtitle="Monitor intern attendance and performance across a selected time period."
-        icon={<Building2 className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />}
+        icon={
+          <Building2 className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
+        }
       />
 
       {/* Date Picker and Filters Bar */}
@@ -273,19 +301,21 @@ export default function InternOps() {
         <div className="xl:col-span-2 space-y-4">
           {/* Status Tabs filters */}
           <div className="flex gap-1 bg-slate-100 dark:bg-slate-950 p-1 rounded-xl w-fit border border-slate-200/50 dark:border-slate-800">
-            {['ALL', 'Good', 'Attention Required', 'Missing Data'].map((state) => (
-              <button
-                key={state}
-                onClick={() => setStatusFilter(state)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-extrabold transition-all ${
-                  statusFilter === state
-                    ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm'
-                    : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-                }`}
-              >
-                {state === 'ALL' ? 'All Roles' : state}
-              </button>
-            ))}
+            {['ALL', 'Good', 'Attention Required', 'Missing Data'].map(
+              (state) => (
+                <button
+                  key={state}
+                  onClick={() => setStatusFilter(state)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-extrabold transition-all ${
+                    statusFilter === state
+                      ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                      : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                  }`}
+                >
+                  {state === 'ALL' ? 'All Roles' : state}
+                </button>
+              )
+            )}
           </div>
 
           {isLoading ? (
@@ -301,7 +331,8 @@ export default function InternOps() {
             />
           ) : processedInterns.length === 0 ? (
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-3xl p-12 text-center text-slate-400">
-              No interns matched your filters for the range from {startDate} to {endDate}.
+              No interns matched your filters for the range from {startDate} to{' '}
+              {endDate}.
             </div>
           ) : (
             <Card className="border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm">
@@ -354,20 +385,28 @@ export default function InternOps() {
                         key={i.id}
                         onClick={() => setSelectedInternId(i.id)}
                         className={`cursor-pointer transition-colors hover:bg-indigo-50/20 dark:hover:bg-slate-850 ${
-                          selectedInternId === i.id ? 'bg-indigo-50/30 dark:bg-slate-800' : ''
+                          selectedInternId === i.id
+                            ? 'bg-indigo-50/30 dark:bg-slate-800'
+                            : ''
                         }`}
                       >
                         <td className="px-6 py-4">
-                          <div className="font-extrabold text-slate-800 dark:text-white capitalize">{i.name}</div>
-                          <div className="text-xs text-slate-400 font-medium">{i.email}</div>
+                          <div className="font-extrabold text-slate-800 dark:text-white capitalize">
+                            {i.name}
+                          </div>
+                          <div className="text-xs text-slate-400 font-medium">
+                            {i.email}
+                          </div>
                         </td>
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-2">
                             <div className="w-20 bg-slate-200 dark:bg-slate-800 rounded-full h-1.5 overflow-hidden">
-                              <div 
+                              <div
                                 className={`h-full rounded-full ${
-                                  i.attendancePercentage >= 80 ? 'bg-emerald-500' : 'bg-rose-500'
-                                }`} 
+                                  i.attendancePercentage >= 80
+                                    ? 'bg-emerald-500'
+                                    : 'bg-rose-500'
+                                }`}
                                 style={{ width: `${i.attendancePercentage}%` }}
                               />
                             </div>
@@ -378,12 +417,18 @@ export default function InternOps() {
                         </td>
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-2">
-                            <span className="font-extrabold text-amber-500">{i.avgRating || '—'}</span>
-                            <span className="text-xs text-slate-400 font-medium">({i.numRatings} ratings)</span>
+                            <span className="font-extrabold text-amber-500">
+                              {i.avgRating || '—'}
+                            </span>
+                            <span className="text-xs text-slate-400 font-medium">
+                              ({i.numRatings} ratings)
+                            </span>
                           </div>
                         </td>
                         <td className="px-6 py-4">
-                          <Badge color={STATUS_COLORS[i.status]}>{i.status}</Badge>
+                          <Badge color={STATUS_COLORS[i.status]}>
+                            {i.status}
+                          </Badge>
                         </td>
                         <td className="px-6 py-4 text-right">
                           <ChevronRight className="w-4 h-4 text-indigo-400 inline-block transition hover:translate-x-0.5" />
@@ -420,7 +465,7 @@ export default function InternOps() {
                 <div className="text-xs text-slate-450 dark:text-slate-400 break-all">
                   {selectedIntern.email}
                 </div>
-                
+
                 <div className="mt-3 flex items-center gap-2">
                   {STATUS_ICONS[selectedIntern.status]}
                   <span className="text-sm font-extrabold select-none capitalize">
@@ -432,66 +477,95 @@ export default function InternOps() {
               {/* Grid Statistics */}
               <div className="grid grid-cols-2 gap-4 mb-6">
                 <div className="p-3 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-200/50 dark:border-slate-850">
-                  <div className="text-[10px] uppercase font-bold text-slate-400">Attendance</div>
+                  <div className="text-[10px] uppercase font-bold text-slate-400">
+                    Attendance
+                  </div>
                   <div className="text-lg font-black text-indigo-600 dark:text-indigo-400 mt-1">
                     {selectedIntern.attendancePercentage}%
                   </div>
                   <div className="text-[9px] text-slate-400 mt-0.5">
-                    {selectedIntern.presentDays} of {selectedIntern.totalAttendance} checks
+                    {selectedIntern.presentDays} of{' '}
+                    {selectedIntern.totalAttendance} checks
                   </div>
                 </div>
 
                 <div className="p-3 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-200/50 dark:border-slate-850">
-                  <div className="text-[10px] uppercase font-bold text-slate-400">Avg Rating</div>
+                  <div className="text-[10px] uppercase font-bold text-slate-400">
+                    Avg Rating
+                  </div>
                   <div className="text-lg font-black text-amber-500 mt-1">
                     {selectedIntern.avgRating || '—'}
                   </div>
                   <div className="text-[9px] text-slate-400 mt-0.5 flex items-center gap-1">
-                    Trend: 
-                    {selectedIntern.ratingTrend === 'UP' && <TrendingUp className="w-3.5 h-3.5 text-emerald-500" />}
-                    {selectedIntern.ratingTrend === 'DOWN' && <TrendingDown className="w-3.5 h-3.5 text-rose-500" />}
-                    <span className="font-extrabold text-[9px] text-slate-600 dark:text-slate-400">{selectedIntern.ratingTrend}</span>
+                    Trend:
+                    {selectedIntern.ratingTrend === 'UP' && (
+                      <TrendingUp className="w-3.5 h-3.5 text-emerald-500" />
+                    )}
+                    {selectedIntern.ratingTrend === 'DOWN' && (
+                      <TrendingDown className="w-3.5 h-3.5 text-rose-500" />
+                    )}
+                    <span className="font-extrabold text-[9px] text-slate-600 dark:text-slate-400">
+                      {selectedIntern.ratingTrend}
+                    </span>
                   </div>
                 </div>
               </div>
 
               {/* Rating History LineChart */}
-              {selectedIntern.ratingsHistory && selectedIntern.ratingsHistory.length > 0 && (
-                <div className="mb-6">
-                  <h4 className="text-xs uppercase font-extrabold tracking-wider text-slate-400 mb-3">Rating Progression</h4>
-                  <div className="h-40 bg-slate-50 dark:bg-slate-950 rounded-2xl p-2 border border-slate-200/30 dark:border-slate-850">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={selectedIntern.ratingsHistory}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} strokeOpacity={0.1} />
-                        <XAxis 
-                          dataKey="date" 
-                          stroke="#64748b" 
-                          fontSize={8} 
-                          tickLine={false}
-                          tickFormatter={(str) => {
-                            if (!str) return '';
-                            // Slice to MM-DD
-                            return str.split('-').slice(1).join('/');
-                          }}
-                        />
-                        <YAxis domain={[1, 5]} ticks={[1, 2, 3, 4, 5]} stroke="#64748b" fontSize={8} tickLine={false} />
-                        <Tooltip 
-                          contentStyle={{ background: '#0f172a', border: 'none', borderRadius: '8px', fontSize: '10px' }}
-                          labelStyle={{ color: '#fff' }}
-                        />
-                        <Line 
-                          type="monotone" 
-                          dataKey="score" 
-                          stroke="#6366f1" 
-                          strokeWidth={2.5} 
-                          dot={{ r: 3.5, strokeWidth: 1.5 }} 
-                          activeDot={{ r: 5 }} 
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
+              {selectedIntern.ratingsHistory &&
+                selectedIntern.ratingsHistory.length > 0 && (
+                  <div className="mb-6">
+                    <h4 className="text-xs uppercase font-extrabold tracking-wider text-slate-400 mb-3">
+                      Rating Progression
+                    </h4>
+                    <div className="h-40 bg-slate-50 dark:bg-slate-950 rounded-2xl p-2 border border-slate-200/30 dark:border-slate-850">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={selectedIntern.ratingsHistory}>
+                          <CartesianGrid
+                            strokeDasharray="3 3"
+                            vertical={false}
+                            strokeOpacity={0.1}
+                          />
+                          <XAxis
+                            dataKey="date"
+                            stroke="#64748b"
+                            fontSize={8}
+                            tickLine={false}
+                            tickFormatter={(str) => {
+                              if (!str) return '';
+                              // Slice to MM-DD
+                              return str.split('-').slice(1).join('/');
+                            }}
+                          />
+                          <YAxis
+                            domain={[1, 5]}
+                            ticks={[1, 2, 3, 4, 5]}
+                            stroke="#64748b"
+                            fontSize={8}
+                            tickLine={false}
+                          />
+                          <Tooltip
+                            contentStyle={{
+                              background: '#0f172a',
+                              border: 'none',
+                              borderRadius: '8px',
+                              fontSize: '10px',
+                            }}
+                            labelStyle={{ color: '#fff' }}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="score"
+                            stroke="#6366f1"
+                            strokeWidth={2.5}
+                            dot={{ r: 3.5, strokeWidth: 1.5 }}
+                            activeDot={{ r: 5 }}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
 
               {/* Tabs for Details */}
               <div className="space-y-6">
@@ -501,14 +575,18 @@ export default function InternOps() {
                     Attendance Logs
                   </h4>
                   <div className="max-h-[160px] overflow-y-auto space-y-2 pr-1">
-                    {selectedIntern.attendanceHistory && selectedIntern.attendanceHistory.length > 0 ? (
+                    {selectedIntern.attendanceHistory &&
+                    selectedIntern.attendanceHistory.length > 0 ? (
                       selectedIntern.attendanceHistory.map((att, idx) => (
-                        <div 
-                          key={idx} 
+                        <div
+                          key={idx}
                           className="flex items-center justify-between text-xs p-2.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200/50 dark:border-slate-850"
                         >
                           <span className="font-extrabold text-slate-650">
-                            {new Date(att.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}
+                            {new Date(att.date).toLocaleDateString('en-GB', {
+                              day: '2-digit',
+                              month: 'short',
+                            })}
                           </span>
 
                           <div className="flex items-center gap-2">
@@ -543,25 +621,32 @@ export default function InternOps() {
                     Supervisor Remarks
                   </h4>
                   <div className="max-h-[180px] overflow-y-auto space-y-2 pr-1">
-                    {selectedIntern.ratingsHistory && selectedIntern.ratingsHistory.length > 0 ? (
-                      selectedIntern.ratingsHistory.slice().reverse().map((rating, idx) => (
-                        <div 
-                          key={idx} 
-                          className="text-xs p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200/50 dark:border-slate-850"
-                        >
-                          <div className="flex justify-between items-start gap-1 pb-1.5 border-b border-slate-200/20 dark:border-slate-850 mb-1.5">
-                            <span className="font-extrabold text-slate-650">
-                              {new Date(rating.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}
-                            </span>
-                            <span className="font-black text-amber-500 flex items-center gap-0.5 text-[10px]">
-                              ★ {rating.score}/5
-                            </span>
+                    {selectedIntern.ratingsHistory &&
+                    selectedIntern.ratingsHistory.length > 0 ? (
+                      selectedIntern.ratingsHistory
+                        .slice()
+                        .reverse()
+                        .map((rating, idx) => (
+                          <div
+                            key={idx}
+                            className="text-xs p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200/50 dark:border-slate-850"
+                          >
+                            <div className="flex justify-between items-start gap-1 pb-1.5 border-b border-slate-200/20 dark:border-slate-850 mb-1.5">
+                              <span className="font-extrabold text-slate-650">
+                                {new Date(rating.date).toLocaleDateString(
+                                  'en-GB',
+                                  { day: '2-digit', month: 'short' }
+                                )}
+                              </span>
+                              <span className="font-black text-amber-500 flex items-center gap-0.5 text-[10px]">
+                                ★ {rating.score}/5
+                              </span>
+                            </div>
+                            <p className="text-slate-600 dark:text-slate-400 italic text-[11px] leading-relaxed">
+                              "{rating.remarks || 'No remarks left.'}"
+                            </p>
                           </div>
-                          <p className="text-slate-600 dark:text-slate-400 italic text-[11px] leading-relaxed">
-                            "{rating.remarks || 'No remarks left.'}"
-                          </p>
-                        </div>
-                      ))
+                        ))
                     ) : (
                       <div className="text-xs text-slate-450 text-center py-4 bg-slate-50 dark:bg-slate-950 rounded-2xl">
                         No remarks recorded.
@@ -574,7 +659,8 @@ export default function InternOps() {
           ) : (
             <Card className="border border-dashed border-slate-300 dark:border-slate-700 bg-transparent p-12 text-center text-slate-400">
               <Building2 className="w-10 h-10 text-slate-300 dark:text-slate-700 mx-auto mb-3" />
-              Click on an intern row in the table to display metrics and performance history details.
+              Click on an intern row in the table to display metrics and
+              performance history details.
             </Card>
           )}
         </div>
