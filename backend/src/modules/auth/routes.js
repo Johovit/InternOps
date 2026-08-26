@@ -37,7 +37,15 @@ async function routes(fastify) {
             password: { type: 'string', minLength: 8 },
             role: {
               type: 'string',
-              enum: ['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN', 'INTERN'],
+              enum: [
+                'ADMIN',
+                'MANAGEMENT',
+                'HR',
+                'SENIOR_TL',
+                'TL',
+                'CAPTAIN',
+                'INTERN',
+              ],
             },
             managerId: { type: 'string', format: 'uuid' },
             departmentId: { type: 'string', format: 'uuid' },
@@ -77,7 +85,15 @@ async function routes(fastify) {
                   password: { type: 'string', minLength: 8 },
                   role: {
                     type: 'string',
-                    enum: ['SENIOR_TL', 'TL', 'CAPTAIN', 'INTERN'],
+                    enum: [
+                      'ADMIN',
+                      'MANAGEMENT',
+                      'HR',
+                      'SENIOR_TL',
+                      'TL',
+                      'CAPTAIN',
+                      'INTERN',
+                    ],
                   },
                   managerId: { type: 'string', format: 'uuid' },
                   departmentId: { type: 'string', format: 'uuid' },
@@ -201,7 +217,7 @@ async function routes(fastify) {
       reply.setCookie('refreshToken', result.refreshToken, {
         httpOnly: true,
         secure: isProduction,
-        sameSite: isProduction ? 'strict' : 'lax',
+        sameSite: isProduction ? 'none' : 'lax',
         path: '/api/v1/auth/refresh',
       });
 
@@ -254,7 +270,7 @@ async function routes(fastify) {
       reply.setCookie('refreshToken', tokens.refreshToken, {
         httpOnly: true,
         secure: isProduction,
-        sameSite: isProduction ? 'strict' : 'lax',
+        sameSite: isProduction ? 'none' : 'lax',
         path: '/api/v1/auth/refresh',
       });
 
