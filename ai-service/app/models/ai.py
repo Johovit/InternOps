@@ -47,3 +47,16 @@ class GenerationRequest(BaseModel):
     @classmethod
     def validate_prompt(cls, v: str) -> str:
         return sanitize_user_input(v)
+
+class ImageGenerationRequest(BaseModel):
+    prompt: str = Field(..., max_length=2000)
+
+    @field_validator("prompt")
+    @classmethod
+    def validate_prompt(cls, v: str) -> str:
+        return sanitize_user_input(v)
+
+
+class ImageGenerationResponse(BaseModel):
+    provider: str
+    image_base64: str

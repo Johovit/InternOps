@@ -29,6 +29,7 @@ const createTaskSchema = z.object({
       (v) => !v || new Date(v).getTime() > Date.now(),
       'deadline must be in the future'
     ),
+  imagePath: z.string().max(500).optional(),
 });
 
 const assignTaskSchema = z.object({
