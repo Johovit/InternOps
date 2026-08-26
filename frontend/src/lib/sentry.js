@@ -29,7 +29,9 @@ export function captureException(error, context = {}) {
 
 export function setSentryUser(user) {
   if (!Sentry.getClient()) return;
-  Sentry.setUser(user ? { id: user.id, email: user.email, role: user.role } : null);
+  Sentry.setUser(
+    user ? { id: user.id, email: user.email, role: user.role } : null
+  );
 }
 
 export function clearSentryUser() {
