@@ -1,6 +1,12 @@
 require('dotenv').config();
 const validateEnv = require('./config/validateEnv');
 validateEnv();
+const {
+  initSentry,
+  captureException: sentryCaptureException,
+  flushSentry,
+} = require('./config/sentry');
+initSentry();
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const Fastify = require('fastify');
@@ -412,6 +418,15 @@ app.setErrorHandler((error, request, reply) => {
 
   if (statusCode >= 500) {
     request.log.error(logPayload, 'Unhandled server error');
+    sentryCaptureException(error, {
+      userId: request.user?.id || null,
+      tags: {
+        requestId: request.id,
+        route: request.url,
+        method: request.method,
+        statusCode: String(statusCode),
+      },
+    });
   } else {
     request.log.warn(logPayload, 'Request error');
   }
@@ -470,6 +485,7 @@ const gracefulShutdown = async (signal) => {
 
     // Close database pool connections
     await pool.end();
+    await flushSentry(2000);
 
     clearTimeout(forceShutdown);
     app.log.info('Cleanup completed. Exiting now.');
@@ -487,6 +503,22 @@ const gracefulShutdown = async (signal) => {
 
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('unhandledRejection', (reason) => {
+  app.log.error({ err: reason }, 'Unhandled promise rejection');
+  sentryCaptureException(
+    reason instanceof Error ? reason : new Error(String(reason)),
+    { extra: { type: 'unhandledRejection' } }
+  );
+});
+process.on('uncaughtException', (error) => {
+  app.log.error({ err: error }, 'Uncaught exception - process will exit');
+  sentryCaptureException(error, { extra: { type: 'uncaughtException' } });
+  const forceExit = setTimeout(() => process.exit(1), 3000);
+  flushSentry(2000).finally(() => {
+    clearTimeout(forceExit);
+    process.exit(1);
+  });
+});
 
 if (require.main === module) {
   start();
