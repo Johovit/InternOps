@@ -95,7 +95,8 @@ jobs:
       - name: Run Frontend Tests
         run: |
           cd frontend
-          npm ci --include=optional --no-audit --no-fund
+          rm -rf node_modules
+          npm install --include=optional --no-audit --no-fund
           npm run test
 
       - name: Build frontend
