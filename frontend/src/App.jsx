@@ -58,10 +58,15 @@ let bootRefreshPromise = null;
 
 function Private({ children }) {
   const token = useAuthStore((s) => s.accessToken);
+  const user = useAuthStore((s) => s.user);
   const hydrated = useAuthStore((s) => s.hydrated);
 
   if (!hydrated) return null;
   if (!token) return <Navigate to="/login" replace />;
+  if (user?.mustChangePassword && window.location.pathname !== '/profile') {
+    return <Navigate to="/profile" replace />;
+  }
+
   return children;
 }
 

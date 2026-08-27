@@ -15,7 +15,10 @@
     "lint": "eslint . && node scripts/lint-modules.js",
     "lint:modules": "node scripts/lint-modules.js",
     "lint:db": "node scripts/lint-db.js",
-    "generate:module": "node scripts/generate-module.js"
+    "generate:module": "node scripts/generate-module.js",
+    "cleanup:seed:preview": "node scripts/cleanup-seed-data.js",
+    "cleanup:seed:apply": "node scripts/cleanup-seed-data.js --apply",
+    "test:db-guard": "node scripts/check-test-database-isolation.js"
   },
   "dependencies": {
     "@fastify/compress": "^9.0.0",
@@ -55,7 +58,8 @@
     "socket.io": "^4.8.3",
     "uuid": "11.1.1",
     "zod": "^3.25.28",
-    "zod-to-json-schema": "^3.25.2"
+    "zod-to-json-schema": "^3.25.2",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "eslint": "^9.16.0",

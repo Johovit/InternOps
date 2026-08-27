@@ -1,6 +1,7 @@
 require('dotenv').config();
 const pino = require('pino');
 const { z } = require('zod');
+const { resolveDatabaseUrl } = require('./testDatabase');
 
 const log = pino(
   process.env.NODE_ENV === 'development'
@@ -106,7 +107,7 @@ module.exports = {
   port: env.PORT,
   host: process.env.HOST || '0.0.0.0',
   nodeEnv: process.env.NODE_ENV,
-  databaseUrl: process.env.DATABASE_URL,
+  databaseUrl: resolveDatabaseUrl(process.env),
   dbPoolMax: parseInt(process.env.DB_POOL_MAX, 10) || 20,
   jwt: {
     secret: process.env.JWT_SECRET,
