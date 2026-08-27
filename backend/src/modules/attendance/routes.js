@@ -22,7 +22,8 @@ async function routes(fastify) {
     '/mark',
     {
       schema: { tags: ['Attendance'], description: 'Mark single attendance' },
-      preHandler: [auth, rbac('CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN'), sanitize],
+      // Admin should have only view access and cannot mark attendence
+      preHandler: [auth, rbac('CAPTAIN', 'TL', 'SENIOR_TL'), sanitize],
     },
     async (req, reply) => {
       try {
@@ -119,7 +120,8 @@ async function routes(fastify) {
     {
       config: { rateLimit: { max: 5, timeWindow: '1 minute' } },
       schema: { tags: ['Attendance'], description: 'Bulk mark attendance' },
-      preHandler: [auth, rbac('CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN'), sanitize],
+      // Admin should have only view access and cannot mark bulk attendence
+      preHandler: [auth, rbac('CAPTAIN', 'TL', 'SENIOR_TL'), sanitize],
     },
     async (req, reply) => {
       try {
@@ -272,7 +274,7 @@ async function routes(fastify) {
           });
         }
 
-        const result = await service.getAttendance(req.params.userId, {
+        const result = await repo.getAttendance(req.params.userId, {
           from,
           to,
           page,

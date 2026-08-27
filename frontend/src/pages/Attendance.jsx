@@ -27,9 +27,11 @@ export default function Attendance({
   const { deptId: routeDeptId } = useParams();
   const deptId = propDeptId || routeDeptId;
   const user = useAuthStore((s) => s.user);
-  const canMark = ['CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN'].includes(user?.role);
-  const isManager = canMark;
+  const canMark = ['CAPTAIN', 'TL', 'SENIOR_TL'].includes(user?.role);
   const isAdmin = user?.role === 'ADMIN';
+  const canViewAttendance = ['CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN'].includes(
+    user?.role
+  );
 
   const [viewUserId, setViewUserId] = useState(() => {
     if (isProjectView && roster.length > 0) {
@@ -67,7 +69,8 @@ export default function Attendance({
 
   const activeDepartment = departments.find((d) => d.id === deptId);
 
-  // Managers can pick any team member; everyone can always see their own.
+  // Authorized users can view their own attendance and, where permitted,
+  // attendance of other members..
   const {
     data: team = [],
     isError: teamIsError,
@@ -81,7 +84,7 @@ export default function Attendance({
           params: { department_id: deptId || undefined },
         })
         .then((res) => res.data),
-    enabled: isManager && !isProjectView,
+    enabled: canViewAttendance && !isProjectView,
   });
 
   const {
@@ -239,7 +242,7 @@ export default function Attendance({
               View attendance of
             </label>
 
-            {isManager ? (
+            {canViewAttendance ? (
               <>
                 {teamIsError && (
                   <div className="mb-4">
@@ -430,7 +433,7 @@ export default function Attendance({
               View attendance of
             </label>
 
-            {isManager ? (
+            {canViewAttendance ? (
               <>
                 {teamIsError && (
                   <div className="mb-4">
