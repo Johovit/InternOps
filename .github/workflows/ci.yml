@@ -95,7 +95,7 @@ jobs:
       - name: Run Frontend Tests
         run: |
           cd frontend
-          rm -rf node_modules
+          rm -rf node_modules package-lock.json
           npm install --include=optional --no-audit --no-fund
           npm run test
 
