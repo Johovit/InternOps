@@ -24,6 +24,7 @@ const InternOpsAssistant = lazy(
   () => import('./components/InternOpsAssistant')
 );
 const Reports = lazy(() => import('./pages/admin/Reports'));
+const ReportTemplates = lazy(() => import('./pages/admin/ReportTemplates'));
 const Analytics = lazy(() => import('./pages/admin/Analytics'));
 const Exports = lazy(() => import('./pages/admin/Exports'));
 const AdminDashboard = lazy(() => import('./pages/admin/AdminDashboard'));
@@ -40,6 +41,7 @@ const FeatureFlags = lazy(() => import('./pages/admin/FeatureFlags'));
 const GithubSync = lazy(() => import('./pages/admin/GithubSync'));
 const ProjectsPage = lazy(() => import('./pages/admin/ProjectsPage'));
 const ProjectDetailPage = lazy(() => import('./pages/admin/ProjectDetailPage'));
+const TaskDetails = lazy(() => import('./pages/admin/TaskDetails'));
 
 function PageLoader() {
   return (
@@ -231,6 +233,22 @@ export default function App() {
 
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="tasks" element={<Tasks />} />
+            <Route
+              path="tasks/:taskId"
+              element={
+                <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL']}>
+                  <TaskDetails />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="admin/tasks/:taskId"
+              element={
+                <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL']}>
+                  <TaskDetails />
+                </RoleGuard>
+              }
+            />
             <Route path="attendance" element={<Attendance />} />
             <Route path="ratings" element={<Ratings />} />
             <Route path="meetings" element={<Meetings />} />
@@ -246,6 +264,14 @@ export default function App() {
               element={
                 <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL']}>
                   <Reports />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="report-templates"
+              element={
+                <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL']}>
+                  <ReportTemplates />
                 </RoleGuard>
               }
             />

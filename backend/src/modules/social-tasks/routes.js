@@ -29,6 +29,7 @@ const createTaskSchema = z.object({
       (v) => !v || new Date(v).getTime() > Date.now(),
       'deadline must be in the future'
     ),
+  imagePath: z.string().max(500).optional(),
 });
 
 const assignTaskSchema = z.object({
@@ -380,6 +381,45 @@ module.exports = async function socialTasksRoutes(fastify) {
       };
 
       return submission;
+    }
+  );
+
+  // Get task by ID (Authenticated users)
+  fastify.get(
+    '/:id',
+    {
+      schema: {
+        tags: ['Tasks'],
+        description: 'Get task details by ID',
+      },
+      preHandler: [auth],
+    },
+    async (req, reply) => {
+      const task = await repo.getTaskById(req.params.id);
+      if (!task) {
+        return reply.status(404).send({ error: 'Task not found' });
+      }
+      return task;
+    }
+  );
+
+  // Get task analytics and department-wise completion stats (Admin & Senior TL)
+  fastify.get(
+    '/:id/analytics',
+    {
+      schema: {
+        tags: ['Tasks'],
+        description:
+          'Get task analytics and department-wise completion breakdown',
+      },
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],
+    },
+    async (req, reply) => {
+      const analytics = await repo.getTaskAnalytics(req.params.id);
+      if (!analytics) {
+        return reply.status(404).send({ error: 'Task not found' });
+      }
+      return analytics;
     }
   );
 };
