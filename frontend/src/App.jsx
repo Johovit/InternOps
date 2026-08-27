@@ -42,6 +42,7 @@ const FeatureFlags = lazy(() => import('./pages/admin/FeatureFlags'));
 const GithubSync = lazy(() => import('./pages/admin/GithubSync'));
 const ProjectsPage = lazy(() => import('./pages/admin/ProjectsPage'));
 const ProjectDetailPage = lazy(() => import('./pages/admin/ProjectDetailPage'));
+const TaskDetails = lazy(() => import('./pages/admin/TaskDetails'));
 
 function PageLoader() {
   return (
@@ -233,6 +234,22 @@ export default function App() {
 
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="tasks" element={<Tasks />} />
+            <Route
+              path="tasks/:taskId"
+              element={
+                <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL']}>
+                  <TaskDetails />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="admin/tasks/:taskId"
+              element={
+                <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL']}>
+                  <TaskDetails />
+                </RoleGuard>
+              }
+            />
             <Route path="attendance" element={<Attendance />} />
             <Route path="ratings" element={<Ratings />} />
             <Route path="meetings" element={<Meetings />} />
