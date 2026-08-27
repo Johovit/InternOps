@@ -23,7 +23,7 @@ async function routes(fastify) {
     '/mark',
     {
       schema: { tags: ['Attendance'], description: 'Mark single attendance' },
-      preHandler: [auth, rbac('CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN'), sanitize],
+      preHandler: [auth, rbac('CAPTAIN', 'TL', 'SENIOR_TL'), sanitize],
     },
     async (req, reply) => {
       try {
@@ -122,7 +122,7 @@ async function routes(fastify) {
     {
       config: { rateLimit: { max: 5, timeWindow: '1 minute' } },
       schema: { tags: ['Attendance'], description: 'Bulk mark attendance' },
-      preHandler: [auth, rbac('CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN'), sanitize],
+      preHandler: [auth, rbac('CAPTAIN', 'TL', 'SENIOR_TL'), sanitize],
     },
     async (req, reply) => {
       try {
@@ -146,7 +146,7 @@ async function routes(fastify) {
         }
         const entries = parsed.data.entries;
 
-        // Authorize all entries in a single recursive query — avoids N+1.
+        // Authorize all entries in a single recursive query ΓÇö avoids N+1.
         if (req.user.role !== 'ADMIN') {
           const targetIds = [...new Set(entries.map((e) => e.user_id))];
           if (targetIds.includes(req.user.id)) {
@@ -283,18 +283,45 @@ async function routes(fastify) {
   fastify.get(
     '/:userId',
     {
-      schema: { tags: ['Attendance'], description: 'Get attendance records' },
+      schema: {
+        tags: ['Attendance'],
+        description: 'Get attendance records',
+        params: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            userId: { type: 'string', format: 'uuid' },
+          },
+          required: ['userId'],
+        },
+        querystring: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            from: { type: 'string', format: 'date' },
+            to: { type: 'string', format: 'date' },
+            page: { type: 'integer', minimum: 1, default: 1 },
+            limit: { type: 'integer', minimum: 1, maximum: 100, default: 30 },
+          },
+        },
+      },
       preHandler: [auth, ownership('userId')],
     },
     async (req, reply) => {
       try {
         const { from, to, page, limit } = req.query;
-        return await repo.getAttendance(req.params.userId, {
+        if (from && to && new Date(from) > new Date(to)) {
+          return reply.status(400).send({
+            error: "'from' date must be before or equal to 'to' date",
+          });
+        }
+        const result = await repo.getAttendance(req.params.userId, {
           from,
           to,
           page,
           limit,
         });
+        return reply.send(result);
       } catch (err) {
         req.log.error(err, 'Error in GET /attendance/:userId');
         return reply.status(500).send({ error: 'Internal server error' });

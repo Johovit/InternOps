@@ -57,9 +57,12 @@ export default function Attendance({
   const deptId = propDeptId || routeDeptId;
   const user = useAuthStore((s) => s.user);
   const requestedDeptId = deptId || user?.department_id || '';
-  const canMark = ['CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN'].includes(user?.role);
-  const isManager = canMark;
+  const canMark = ['CAPTAIN', 'TL', 'SENIOR_TL'].includes(user?.role);
   const isAdmin = user?.role === 'ADMIN';
+  const canViewAttendance = ['CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN'].includes(
+    user?.role
+  );
+  const isManager = canViewAttendance;
 
   const [viewUserId, setViewUserId] = useState(() => {
     if (isProjectView && roster.length > 0) {
@@ -112,14 +115,14 @@ export default function Attendance({
     error: teamError,
     refetch: refetchTeam,
   } = useQuery({
-    queryKey: ['attendanceHistoryMembers', user?.id, requestedDeptId],
+    queryKey: ['authorizedAttendanceMembers', user?.id, requestedDeptId],
     queryFn: () =>
       api
-        .get('/team/members', {
+        .get('/attendance/authorized-members', {
           params: { department_id: requestedDeptId || undefined },
         })
         .then((res) => res.data),
-    enabled: isManager && !isProjectView && !!user?.id,
+    enabled: canViewAttendance && !isProjectView && !!user?.id,
   });
 
   const teamDeptId = team.find((member) => member.department_id)?.department_id;
@@ -481,7 +484,7 @@ export default function Attendance({
                             </td>
 
                             <td className="px-6 py-4 text-slate-600 dark:text-slate-300">
-                              {a.remarks || '—'}
+                              {a.remarks || 'ΓÇö'}
                             </td>
                           </tr>
                         ))}
@@ -491,7 +494,7 @@ export default function Attendance({
 
                   <div className="flex items-center justify-between mt-4 text-sm text-slate-500 dark:text-slate-400">
                     <span>
-                      {total} record{total === 1 ? '' : 's'} · page {page} of{' '}
+                      {total} record{total === 1 ? '' : 's'} ┬╖ page {page} of{' '}
                       {totalPages}
                     </span>
 
@@ -687,7 +690,7 @@ export default function Attendance({
                             </td>
 
                             <td className="px-6 py-4 text-slate-600 dark:text-slate-300">
-                              {a.remarks || '—'}
+                              {a.remarks || 'ΓÇö'}
                             </td>
                           </tr>
                         ))}
@@ -697,7 +700,7 @@ export default function Attendance({
 
                   <div className="flex items-center justify-between mt-4 text-sm text-slate-500 dark:text-slate-400">
                     <span>
-                      {total} record{total === 1 ? '' : 's'} · page {page} of{' '}
+                      {total} record{total === 1 ? '' : 's'} ┬╖ page {page} of{' '}
                       {totalPages}
                     </span>
 
