@@ -72,7 +72,10 @@ test('resets the modal body scroll when expanding and restoring', () => {
 test('uses completed assignment wording instead of dry-run or manager labels', () => {
   render(<WorkbookImportModal open onClose={vi.fn()} />);
   expect(screen.getByText('Assign to department')).toBeInTheDocument();
-  expect(screen.getByText('Assign under Senior TL or TL')).toBeInTheDocument();
+  expect(screen.getByText('Assign direct manager')).toBeInTheDocument();
+  expect(
+    screen.getByText('Select Senior TL, TL, or Captain')
+  ).toBeInTheDocument();
   expect(screen.queryByText(/account dry run/i)).toBeNull();
   expect(screen.queryByText(/TL manager/i)).toBeNull();
 });
@@ -118,7 +121,11 @@ test('source includes guarded execute endpoint and confirmation', () => {
   expect(source).toContain('window.confirm');
   expect(source).toContain('!preview.importBlocked');
   expect(source).toContain('Import completed successfully');
-  expect(source).toContain('Ratings are not included');
+  expect(source).toContain('valid weekly ratings into Neon');
+  expect(source).toContain("ratingSheets: 'Rating sheets'");
+  expect(source).toContain(
+    "ratingAfterCompletionExcluded: 'Ratings after completion excluded'"
+  );
   expect(source).not.toContain('accountPlanRatingsToImport');
 });
 

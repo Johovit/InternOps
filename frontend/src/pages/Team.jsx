@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../lib/axios';
 import useAuthStore from '../store/auth';
-import { Users } from 'lucide-react';
+import { Eye, EyeOff, Users, X } from 'lucide-react';
 import CustomSelect from '../components/CustomSelect';
 import CustomDatePicker from '../components/CustomDatePicker';
 import { ApiErrorState } from '../components/ui';
@@ -150,10 +150,10 @@ const EDIT_FIELDS = [
 
 function StatCard({ label, value, sub }) {
   return (
-    <div className="relative overflow-hidden rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-5 shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:shadow-none">
+    <div className="relative min-h-[148px] overflow-hidden rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-slate-700 dark:bg-slate-900 dark:shadow-none">
       <div className="absolute -right-8 -top-8 w-24 h-24 rounded-full bg-gradient-to-br from-indigo-500 to-blue-600 opacity-10 dark:opacity-20" />
 
-      <div className="relative z-10">
+      <div className="relative z-10 flex h-full flex-col justify-center">
         <p className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
           {value}
         </p>
@@ -161,9 +161,9 @@ function StatCard({ label, value, sub }) {
           {label}
         </p>
         {sub && (
-          <p className="text-xs text-slate-500 dark:text-slate-500 mt-0.5">
+          <div className="mt-1.5 text-xs font-semibold leading-5 text-slate-500 dark:text-slate-400">
             {sub}
-          </p>
+          </div>
         )}
       </div>
     </div>
@@ -273,11 +273,11 @@ function AddMemberModal({ onClose }) {
 
   const modal = (
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/70 backdrop-blur-sm p-4"
+      className="internops-modal-backdrop fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-3xl max-h-[86vh] rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl overflow-hidden flex flex-col"
+        className="internops-modal-panel w-full max-w-3xl max-h-[86vh] rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -295,10 +295,11 @@ function AddMemberModal({ onClose }) {
           <button
             type="button"
             onClick={onClose}
-            className="w-10 h-10 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 text-2xl leading-none shrink-0"
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-slate-100 p-0 text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 dark:hover:text-white"
             title="Close"
+            aria-label="Close Add Team Member dialog"
           >
-            &times;
+            <X className="h-5 w-5" aria-hidden="true" />
           </button>
         </div>
 
@@ -368,10 +369,17 @@ function AddMemberModal({ onClose }) {
 
                   <button
                     type="button"
-                    onClick={() => setShowPass((s) => !s)}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm"
+                    onClick={() => setShowPass((current) => !current)}
+                    className="absolute right-3 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-xl p-0 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/50 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                    title={showPass ? 'Hide password' : 'Show password'}
+                    aria-label={showPass ? 'Hide password' : 'Show password'}
+                    aria-pressed={showPass}
                   >
-                    {showPass ? '🙈' : '👁️'}
+                    {showPass ? (
+                      <EyeOff className="h-5 w-5" aria-hidden="true" />
+                    ) : (
+                      <Eye className="h-5 w-5" aria-hidden="true" />
+                    )}
                   </button>
                 </div>
               </Field>
@@ -741,11 +749,11 @@ function MemberDetail({ memberId, onClose }) {
 
   return (
     <div
-      className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex justify-end z-50"
+      className="internops-modal-backdrop fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex justify-end z-50"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md bg-slate-50 dark:bg-slate-950 h-full overflow-auto shadow-2xl border-l border-slate-200 dark:border-slate-700"
+        className="internops-modal-panel w-full max-w-md bg-slate-50 dark:bg-slate-950 h-full overflow-auto shadow-2xl border-l border-slate-200 dark:border-slate-700"
         onClick={(e) => e.stopPropagation()}
       >
         {memberIsError && !member ? (
@@ -782,7 +790,7 @@ function MemberDetail({ memberId, onClose }) {
                   <p className="text-white/80 text-sm">{member.email}</p>
 
                   <span
-                    className={`inline-flex mt-2 px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                    className={`mt-2 inline-flex whitespace-nowrap px-2.5 py-0.5 rounded-full text-xs font-bold ${
                       ROLE_BADGE[member.role] || 'bg-white/20 text-white'
                     }`}
                   >
@@ -794,29 +802,77 @@ function MemberDetail({ memberId, onClose }) {
 
             <div className="p-6 space-y-4">
               <div className="grid grid-cols-3 gap-3 text-center">
-                <div className="bg-white dark:bg-slate-900 p-3 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
-                  <p className="text-xl font-extrabold text-slate-900 dark:text-white">
+                <div className="flex h-[112px] min-w-0 flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white px-2 py-3 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+                  <p className="text-2xl font-extrabold leading-none text-slate-900 dark:text-white">
                     {pct === null ? '—' : `${pct}%`}
                   </p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
+
+                  <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">
                     Attendance
                   </p>
                 </div>
 
-                <div className="bg-white dark:bg-slate-900 p-3 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
-                  <p className="text-base font-extrabold">
-                    <Stars value={member.avg_rating} />
-                  </p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    {member.rating_count} ratings
+                <div className="flex h-[112px] min-w-0 flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white px-2 py-3 text-center shadow-sm dark:border-slate-700 dark:bg-slate-900">
+                  <div className="flex items-baseline justify-center gap-1">
+                    <span className="text-2xl font-extrabold leading-none text-slate-900 dark:text-white">
+                      {member.avg_rating == null || member.avg_rating === ''
+                        ? '—'
+                        : Number(member.avg_rating)
+                            .toFixed(1)
+                            .replace(/\.0$/, '')}
+                    </span>
+
+                    {member.avg_rating != null && member.avg_rating !== '' && (
+                      <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
+                        /10
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="mt-2 whitespace-nowrap text-[13px] leading-none tracking-[0.03em] text-amber-500">
+                    {member.avg_rating == null || member.avg_rating === '' ? (
+                      <span className="text-slate-400 dark:text-slate-500">
+                        —
+                      </span>
+                    ) : (
+                      <>
+                        {'★'.repeat(
+                          Math.max(
+                            0,
+                            Math.min(
+                              5,
+                              Math.round(Number(member.avg_rating) / 2)
+                            )
+                          )
+                        )}
+                        <span className="text-slate-300 dark:text-slate-700">
+                          {'★'.repeat(
+                            5 -
+                              Math.max(
+                                0,
+                                Math.min(
+                                  5,
+                                  Math.round(Number(member.avg_rating) / 2)
+                                )
+                              )
+                          )}
+                        </span>
+                      </>
+                    )}
+                  </div>
+
+                  <p className="mt-2 text-[11px] font-semibold leading-none text-slate-500 dark:text-slate-400">
+                    {Number(member.rating_count) || 0}{' '}
+                    {Number(member.rating_count) === 1 ? 'rating' : 'ratings'}
                   </p>
                 </div>
 
-                <div className="bg-white dark:bg-slate-900 p-3 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
-                  <p className="text-xl font-extrabold text-slate-900 dark:text-white">
+                <div className="flex h-[112px] min-w-0 flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white px-2 py-3 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+                  <p className="text-2xl font-extrabold leading-none text-slate-900 dark:text-white">
                     {member.verified_tasks}/{member.total_tasks}
                   </p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
+
+                  <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">
                     Tasks done
                   </p>
                 </div>
@@ -860,11 +916,11 @@ function MemberDetail({ memberId, onClose }) {
               </div>
 
               {tab === 'history' ? (
-                <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm p-5">
+                <div className="internops-modal-panel bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm p-5">
                   <HistorySection memberId={memberId} />
                 </div>
               ) : (
-                <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm p-5">
+                <div className="internops-modal-panel bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm p-5">
                   <div className="flex items-center justify-between mb-4">
                     <h4 className="font-extrabold text-slate-900 dark:text-white">
                       Details
@@ -884,12 +940,34 @@ function MemberDetail({ memberId, onClose }) {
                     <dl className="space-y-1 text-sm">
                       <Row label="Reports to" value={member.manager_name} />
                       <Row label="Department" value={member.department_name} />
+                      <Row label="Intern Code" value={member.intern_code} />
                       <Row label="Phone" value={member.phone} />
                       <Row label="Location" value={member.location} />
                       <Row label="College" value={member.college} />
                       <Row label="Course" value={member.course} />
                       <Row label="Year" value={member.year_of_study} />
                       <Row label="Position" value={member.position} />
+                      <Row
+                        label="Internship Domain"
+                        value={member.internship_domain}
+                      />
+                      {member.offer_letter_url && (
+                        <div className="flex items-center justify-between gap-4 py-2">
+                          <dt className="font-semibold text-slate-500 dark:text-slate-400">
+                            Offer Letter
+                          </dt>
+                          <dd>
+                            <a
+                              href={member.offer_letter_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="font-extrabold text-indigo-600 hover:text-indigo-700 dark:text-indigo-300 dark:hover:text-indigo-200"
+                            >
+                              View offer letter
+                            </a>
+                          </dd>
+                        </div>
+                      )}
                       <Row
                         label="Joining date"
                         value={
@@ -995,7 +1073,7 @@ function MemberDetail({ memberId, onClose }) {
 
               {/* Hierarchical management: role + manager (managers only) */}
               {rolesBelow(user?.role).length > 0 && member.id !== user?.id && (
-                <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm p-5 space-y-4">
+                <div className="internops-modal-panel bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm p-5 space-y-4">
                   <h4 className="font-extrabold text-slate-900 dark:text-white">
                     Manage
                   </h4>
@@ -1141,7 +1219,7 @@ function PendingProofsPanel({ onMember }) {
   if (!isLoading && !isError && proofs.length === 0) return null;
 
   return (
-    <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-amber-100 dark:border-amber-900/60 mb-5">
+    <div className="internops-modal-panel bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-amber-100 dark:border-amber-900/60 mb-5">
       <button
         onClick={() => setOpen((o) => !o)}
         className="w-full flex items-center justify-between p-4 text-left"
@@ -1304,7 +1382,30 @@ export default function Team() {
       0
     );
 
-    return { active, avgAtt, avgRating, pendingProofs };
+    const seniorTlCount = members.filter(
+      (member) => member.role === 'SENIOR_TL'
+    ).length;
+
+    const tlCount = members.filter((member) => member.role === 'TL').length;
+
+    const captainCount = members.filter(
+      (member) => member.role === 'CAPTAIN'
+    ).length;
+
+    const internCount = members.filter(
+      (member) => member.role === 'INTERN'
+    ).length;
+
+    return {
+      active,
+      avgAtt,
+      avgRating,
+      pendingProofs,
+      seniorTlCount,
+      tlCount,
+      captainCount,
+      internCount,
+    };
   }, [members]);
 
   const exportCsv = async () => {
@@ -1383,7 +1484,33 @@ export default function Team() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-        <StatCard label="Total members" value={members.length} />
+        <StatCard
+          label="Total members"
+          value={members.length}
+          sub={
+            user?.role === 'ADMIN' ? (
+              <span className="block leading-5">
+                <span className="flex items-center gap-2 whitespace-nowrap">
+                  <span>{stats.seniorTlCount} Senior TL</span>
+                  <span className="text-slate-400 dark:text-slate-500">•</span>
+                  <span>{stats.tlCount} TL</span>
+                </span>
+
+                <span className="mt-1 flex items-center gap-2 whitespace-nowrap">
+                  <span>
+                    {stats.captainCount}{' '}
+                    {stats.captainCount === 1 ? 'Captain' : 'Captains'}
+                  </span>
+                  <span className="text-slate-400 dark:text-slate-500">•</span>
+                  <span>
+                    {stats.internCount}{' '}
+                    {stats.internCount === 1 ? 'Intern' : 'Interns'}
+                  </span>
+                </span>
+              </span>
+            ) : undefined
+          }
+        />
         <StatCard label="Active" value={stats.active} />
         <StatCard
           label="Avg attendance"
@@ -1450,13 +1577,13 @@ export default function Team() {
       </div>
 
       {filtered.length === 0 ? (
-        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm p-10 text-center text-slate-500 dark:text-slate-400">
+        <div className="internops-modal-panel bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm p-10 text-center text-slate-500 dark:text-slate-400">
           {members.length === 0
             ? 'You have no team members yet. Click “Add Member” to get started.'
             : 'No members match your search.'}
         </div>
       ) : view === 'table' ? (
-        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none overflow-x-auto">
+        <div className="internops-modal-panel bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 dark:bg-slate-950 text-left text-slate-600 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700">
               <tr>
@@ -1504,7 +1631,7 @@ export default function Team() {
 
                     <td className="p-4">
                       <span
-                        className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                        className={`inline-flex whitespace-nowrap px-2.5 py-0.5 rounded-full text-xs font-bold ${
                           ROLE_BADGE[m.role] || ROLE_BADGE.INTERN
                         }`}
                       >
@@ -1591,7 +1718,7 @@ export default function Team() {
               <div
                 key={m.id}
                 onClick={() => setSelected(m.id)}
-                className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 p-5 cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition"
+                className="internops-modal-panel bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 p-5 cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition"
               >
                 <div className="flex items-center gap-3 mb-4">
                   <Avatar m={m} size="w-12 h-12" />
@@ -1602,7 +1729,7 @@ export default function Team() {
                     </div>
 
                     <span
-                      className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                      className={`inline-flex whitespace-nowrap px-2.5 py-0.5 rounded-full text-xs font-bold ${
                         ROLE_BADGE[m.role] || ROLE_BADGE.INTERN
                       }`}
                     >

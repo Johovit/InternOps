@@ -39,6 +39,7 @@ const SUMMARY_LABELS = {
   accountPlanMissingEmail: 'Missing email',
   accountPlanInvalidGmail: 'Invalid email',
   accountPlanMissingInternCode: 'Missing intern code',
+  accountPlanIncompleteIdentitySkipped: 'Incomplete identity rows skipped',
   accountPlanExistingUser: 'Existing users',
   accountPlanExistingLeadershipReused: 'Existing leadership accounts reused',
   accountPlanPeopleReceivingAttendance: 'People receiving attendance',
@@ -57,6 +58,45 @@ const SUMMARY_LABELS = {
   emailInvalidOrMissing: 'Invalid or missing profile email',
   emailMatchedFromInternDetails: 'Emails from Intern Details fallback',
   accountPlanStatusVerification: 'Status verification required',
+  accountPlanInternCodesToCorrect: 'Intern codes to correct',
+  emailProfilesSupplemented: 'Email profiles supplemented',
+  emailInternsProfilesSupplemented: 'Intern profiles supplemented',
+  emailSupplementAmbiguous: 'Ambiguous email supplements',
+  fullDetailsSheet: 'Full details sheet',
+  masterSheet: 'Master sheet',
+  masterRows: 'Master rows',
+  internsSheet: 'Interns sheet',
+  internsRows: 'Intern rows',
+  activeInterns: 'Active interns',
+  incompleteIdentitySkipped: 'Incomplete identity rows skipped',
+  nonActiveExcluded: 'Non-active interns excluded',
+  accountsCreated: 'Accounts created',
+  existingAccounts: 'Existing accounts',
+  existingInternAccountsReused: 'Existing intern accounts reused',
+  existingLeadershipAccountsReused: 'Existing leadership accounts reused',
+  peopleReceivingAttendance: 'People receiving attendance',
+  attendanceCreated: 'Attendance records created',
+  attendanceUnchanged: 'Attendance records unchanged',
+  internCodesCorrected: 'Intern codes corrected',
+  ratingSheets: 'Rating sheets',
+  ratingRecords: 'Rating records',
+  ratingScoreRecords: 'Rating score records',
+  ratingReasonOnlyRecords: 'Rating reason-only records',
+  ratingEmptyWeekRecords: 'Rating empty-week records',
+  ratingIdentityMissing: 'Rating identity missing',
+  ratingIdentityConflicts: 'Rating identity conflicts',
+  ratingNonNumericExcluded: 'Rating non-numeric excluded',
+  ratingAfterCompletionExcluded: 'Ratings after completion excluded',
+  ratingUnsupportedSheets: 'Rating unsupported sheets',
+  ratingsCreated: 'Ratings created',
+  ratingsUnchanged: 'Ratings unchanged',
+  ratingsFilled: 'Ratings filled',
+  ratingsConflicting: 'Rating conflicts',
+  profilePhonesEnriched: 'Profile phones enriched',
+  profileFieldsEnriched: 'Profile fields enriched',
+  profileFieldsCorrected: 'Profile fields corrected',
+  profileValuesAlreadyCorrect: 'Profile values already correct',
+  newInternAccounts: 'New intern accounts',
 };
 
 const STATUS_STYLES = {
@@ -274,7 +314,7 @@ export default function WorkbookImportModal({ open, onClose }) {
     const attendance =
       preview.accountPlan.counts.accountPlanAttendanceToImport || 0;
     const confirmed = window.confirm(
-      `Import ${active} current intern(s) and ${attendance} attendance record(s) into Neon? Ratings are not included. This operation is transactional.`
+      `Import ${active} current intern(s), ${attendance} attendance record(s), and valid weekly ratings into Neon? Incomplete rows with no email, mobile, or Intern Code will be skipped. This operation is transactional.`
     );
     if (!confirmed) return;
 
@@ -310,7 +350,7 @@ export default function WorkbookImportModal({ open, onClose }) {
   };
 
   const modal = (
-    <div className="fixed inset-0 z-[9999] bg-black/20 dark:bg-black/40">
+    <div className="internops-modal-backdrop fixed inset-0 z-[9999] bg-slate-950/60 backdrop-blur-sm">
       <div
         className={`flex h-full w-full items-center justify-center overflow-y-auto ${
           isExpanded ? 'p-2' : 'p-4'
@@ -409,7 +449,7 @@ export default function WorkbookImportModal({ open, onClose }) {
                           {file.name}
                         </div>
                         <div className="text-sm text-slate-500 dark:text-slate-400">
-                          {formatBytes(file.size)} · XLSX workbook
+                          {formatBytes(file.size)} | XLSX workbook
                         </div>
                       </div>
                     </div>
@@ -468,7 +508,7 @@ export default function WorkbookImportModal({ open, onClose }) {
                     </div>
                     {emailFile && (
                       <div className="mt-2 text-sm font-semibold text-emerald-700 dark:text-emerald-300">
-                        {emailFile.name} · {formatBytes(emailFile.size)}
+                        {emailFile.name} | {formatBytes(emailFile.size)}
                       </div>
                     )}
                   </div>
@@ -511,7 +551,7 @@ export default function WorkbookImportModal({ open, onClose }) {
                   </select>
                 </label>
                 <label className="text-sm font-bold text-slate-700 dark:text-slate-200">
-                  Assign under Senior TL or TL
+                  Assign direct manager
                   <select
                     value={managerId}
                     onChange={(event) => {
@@ -521,7 +561,7 @@ export default function WorkbookImportModal({ open, onClose }) {
                     disabled={!departmentId}
                     className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-900 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-900 dark:text-white"
                   >
-                    <option value="">Select Senior TL or TL</option>
+                    <option value="">Select Senior TL, TL, or Captain</option>
                     {managers.map((manager) => (
                       <option key={manager.lead_id} value={manager.lead_id}>
                         {manager.lead_name} ({manager.role})
@@ -530,8 +570,9 @@ export default function WorkbookImportModal({ open, onClose }) {
                   </select>
                 </label>
                 <p className="text-xs text-slate-500 dark:text-slate-400 md:col-span-2">
-                  Select the department and Senior TL or TL responsible for the
-                  reviewed accounts. Preview remains read-only until import is
+                  The selected direct manager applies only to newly created
+                  accounts. Existing accounts keep their current valid manager
+                  in this department. Preview remains read-only until import is
                   confirmed.
                 </p>
               </div>
@@ -583,8 +624,16 @@ export default function WorkbookImportModal({ open, onClose }) {
                           <div className="font-extrabold">
                             {value.toLocaleString()}
                           </div>
-                          <div className="text-xs">
-                            {key.replaceAll(/([A-Z])/g, ' $1').trim()}
+                          <div className="break-words text-xs leading-relaxed">
+                            {SUMMARY_LABELS[key] ||
+                              key
+                                .replaceAll(/([A-Z])/g, ' $1')
+                                .replaceAll('_', ' ')
+                                .trim()
+                                .toLowerCase()
+                                .replace(/^./, (character) =>
+                                  character.toUpperCase()
+                                )}
                           </div>
                         </div>
                       )
@@ -601,8 +650,12 @@ export default function WorkbookImportModal({ open, onClose }) {
                         <div className="text-2xl font-extrabold text-slate-950 dark:text-white">
                           {value.toLocaleString()}
                         </div>
-                        <div className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">
-                          {SUMMARY_LABELS[key] || key}
+                        <div className="mt-1 break-words text-xs font-semibold leading-relaxed text-slate-500 dark:text-slate-400">
+                          {SUMMARY_LABELS[key] ||
+                            key
+                              .replaceAll(/([A-Z])/g, ' $1')
+                              .replaceAll('_', ' ')
+                              .trim()}
                         </div>
                       </Card>
                     ))}
@@ -615,10 +668,11 @@ export default function WorkbookImportModal({ open, onClose }) {
                           <h4 className="text-base font-extrabold text-slate-900 dark:text-white">
                             Reviewed account assignment
                           </h4>
-                          <p className="text-sm text-slate-500 dark:text-slate-400">
-                            Role: INTERN · Department:{' '}
-                            {preview.accountPlan.department?.name} · Senior TL /
-                            TL: {preview.accountPlan.manager?.full_name}
+                          <p className="mt-1 break-words text-sm leading-relaxed text-slate-500 dark:text-slate-400">
+                            Role: INTERN {' | '} Department:{' '}
+                            {preview.accountPlan.department?.name} {' | '}{' '}
+                            Direct manager:{' '}
+                            {preview.accountPlan.manager?.full_name}
                           </p>
                         </div>
                         <span className="rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-bold text-amber-700 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
@@ -631,13 +685,17 @@ export default function WorkbookImportModal({ open, onClose }) {
                         {accountPlanDisplayCounts.map(([key, value]) => (
                           <div
                             key={key}
-                            className="rounded-xl border border-slate-200 p-3 dark:border-slate-700"
+                            className="min-w-0 overflow-hidden rounded-xl border border-slate-200 p-3 dark:border-slate-700"
                           >
                             <p className="text-lg font-extrabold text-slate-900 dark:text-white">
                               {value.toLocaleString()}
                             </p>
-                            <p className="text-xs text-slate-500 dark:text-slate-400">
-                              {SUMMARY_LABELS[key] || key}
+                            <p className="break-words text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+                              {SUMMARY_LABELS[key] ||
+                                key
+                                  .replaceAll(/([A-Z])/g, ' $1')
+                                  .replaceAll('_', ' ')
+                                  .trim()}
                             </p>
                           </div>
                         ))}
@@ -667,7 +725,7 @@ export default function WorkbookImportModal({ open, onClose }) {
                                 <div className="font-bold text-slate-900 dark:text-white">
                                   {item.name}
                                 </div>
-                                <div className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                                <div className="mt-1 break-words text-xs font-semibold leading-relaxed text-slate-500 dark:text-slate-400">
                                   Mobile: {item.maskedPhone}
                                 </div>
                                 <div className="mt-2 space-y-1">
@@ -1067,7 +1125,7 @@ export default function WorkbookImportModal({ open, onClose }) {
                 title={
                   canImport
                     ? 'Import reviewed current interns into Neon'
-                    : 'Complete a clean preview with both workbooks, department, and Senior TL or TL'
+                    : 'Complete a clean preview with both workbooks, department, and direct manager'
                 }
                 className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-extrabold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600 dark:bg-emerald-600 dark:hover:bg-emerald-500 dark:disabled:bg-slate-700 dark:disabled:text-slate-300"
               >

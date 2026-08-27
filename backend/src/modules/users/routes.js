@@ -125,6 +125,69 @@ async function routes(fastify) {
     }
   );
 
+  fastify.get(
+    '/department/:departmentId/members',
+    {
+      preHandler: [auth, rbac('ADMIN')],
+      schema: {
+        tags: ['Users'],
+        params: {
+          type: 'object',
+          required: ['departmentId'],
+          properties: { departmentId: { type: 'string', format: 'uuid' } },
+        },
+      },
+    },
+    async (req) =>
+      (await repo.listDepartmentMembers(req.params.departmentId)).rows
+  );
+  fastify.patch(
+    '/:id/hierarchy',
+    {
+      preHandler: [auth, rbac('ADMIN'), sanitize],
+      schema: {
+        tags: ['Users'],
+        body: {
+          type: 'object',
+          required: ['role', 'department_id'],
+          additionalProperties: false,
+          properties: {
+            role: { type: 'string', enum: ['TL', 'CAPTAIN', 'INTERN'] },
+            department_id: { type: 'string', format: 'uuid' },
+            captain_ids: {
+              type: 'array',
+              items: { type: 'string', format: 'uuid' },
+              default: [],
+            },
+            intern_ids: {
+              type: 'array',
+              items: { type: 'string', format: 'uuid' },
+              default: [],
+            },
+            assign_all_captains: { type: 'boolean', default: false },
+            assign_all_interns: { type: 'boolean', default: false },
+          },
+        },
+      },
+    },
+    async (req, reply) => {
+      try {
+        return await repo.updateHierarchyAssignment({
+          userId: req.params.id,
+          role: req.body.role,
+          departmentId: req.body.department_id,
+          captainIds: req.body.captain_ids || [],
+          internIds: req.body.intern_ids || [],
+          assignAllCaptains: req.body.assign_all_captains || false,
+          assignAllInterns: req.body.assign_all_interns || false,
+        });
+      } catch (error) {
+        if (error.statusCode)
+          return reply.status(error.statusCode).send({ error: error.message });
+        throw error;
+      }
+    }
+  );
   // Get own profile
   fastify.get(
     '/me',
@@ -213,18 +276,23 @@ async function routes(fastify) {
       const nextRole = data.role || targetUser.role;
 
       if (
-        targetUser.role === 'ADMIN' &&
-        !targetUser.suspended &&
-        nextRole !== 'ADMIN'
+        data.role !== undefined &&
+        data.role !== targetUser.role &&
+        (data.role === 'SENIOR_TL' || targetUser.role === 'SENIOR_TL')
       ) {
-        const otherAdminCount = await repo.countOtherActiveAdmins(
-          req.params.id
-        );
-        if (otherAdminCount === 0) {
-          return reply.status(400).send({
-            error: 'Cannot demote the last active admin',
-          });
-        }
+        return reply.status(409).send({
+          error: 'Senior TL changes must use Departments → Replace Senior TL.',
+        });
+      }
+
+      if (
+        data.role !== undefined &&
+        data.role !== targetUser.role &&
+        (targetUser.role === 'ADMIN' || data.role === 'ADMIN')
+      ) {
+        return reply.status(409).send({
+          error: 'Admin role is protected and cannot be changed.',
+        });
       }
 
       if (data.department_id) {
@@ -232,6 +300,17 @@ async function routes(fastify) {
         if (!department) {
           return reply.status(400).send({ error: 'Department not found' });
         }
+      }
+
+      if (
+        data.manager_id === null &&
+        targetUser.manager_id &&
+        (await repo.countDirectReports(req.params.id)) > 0
+      ) {
+        return reply.status(409).send({
+          error:
+            'Cannot remove this manager while active users report to them. Use the department TL handover workflow.',
+        });
       }
 
       if (data.manager_id !== undefined && data.manager_id !== null) {
@@ -275,6 +354,16 @@ async function routes(fastify) {
           resourceType: 'user',
           resourceId: req.params.id,
           details: { fields: Object.keys(data) },
+          oldValue: {
+            role: targetUser.role,
+            department_id: targetUser.department_id,
+            manager_id: targetUser.manager_id,
+          },
+          newValue: {
+            role: updatedUser.role,
+            department_id: updatedUser.department_id,
+            manager_id: updatedUser.manager_id,
+          },
         };
 
         return { message: 'User updated', user: updatedUser };
@@ -312,14 +401,13 @@ async function routes(fastify) {
         rows: [targetUser],
       } = await repo.getUserById(req.params.id);
 
-      if (targetUser?.role === 'ADMIN') {
-        const adminCount = await repo.countOtherActiveAdmins(req.params.id);
-
-        if (adminCount === 0) {
-          return reply.status(400).send({
-            error: 'Cannot suspend the last active admin',
-          });
-        }
+      if (!targetUser) {
+        return reply.status(404).send({ error: 'User not found' });
+      }
+      if (targetUser.role === 'ADMIN') {
+        return reply.status(409).send({
+          error: 'Admin accounts cannot be suspended.',
+        });
       }
 
       await repo.suspendUser(req.params.id);
@@ -345,7 +433,17 @@ async function routes(fastify) {
         params: { type: 'object', properties: { id: { type: 'string' } } },
       },
     },
-    async (req) => {
+    async (req, reply) => {
+      const {
+        rows: [targetUser],
+      } = await repo.getUserById(req.params.id);
+      if (!targetUser)
+        return reply.status(404).send({ error: 'User not found' });
+      if (targetUser.role === 'ADMIN') {
+        return reply.status(409).send({
+          error: 'Admin accounts cannot be activated through user management.',
+        });
+      }
       await repo.activateUser(req.params.id);
 
       req.auditOnResponse = {
@@ -381,14 +479,13 @@ async function routes(fastify) {
         rows: [targetUser],
       } = await repo.getUserById(req.params.id);
 
-      if (targetUser?.role === 'ADMIN') {
-        const adminCount = await repo.countOtherActiveAdmins(req.params.id);
-
-        if (adminCount === 0) {
-          return reply.status(400).send({
-            error: 'Cannot delete the last active admin',
-          });
-        }
+      if (!targetUser) {
+        return reply.status(404).send({ error: 'User not found' });
+      }
+      if (targetUser.role === 'ADMIN') {
+        return reply.status(409).send({
+          error: 'Admin accounts cannot be deleted.',
+        });
       }
 
       await repo.softDeleteUser(req.params.id);

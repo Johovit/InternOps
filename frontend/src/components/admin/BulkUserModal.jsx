@@ -1,4 +1,4 @@
-﻿import { useState, useRef } from 'react';
+import { useState, useRef } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { X, Upload, Download, CheckCircle, XCircle } from 'lucide-react';
 import Papa from 'papaparse';
@@ -144,7 +144,7 @@ export default function BulkUserModal({ open, onClose }) {
   if (!open) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center overflow-y-auto bg-black/20 p-4 dark:bg-black/40">
+    <div className="internops-modal-backdrop fixed inset-0 z-[9999] flex items-center justify-center overflow-y-auto bg-slate-950/60 backdrop-blur-sm p-4">
       <div className="max-h-[calc(100vh-2rem)] w-full max-w-3xl overflow-y-auto rounded-2xl border border-slate-200 bg-white text-slate-800 shadow-2xl dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4 dark:border-slate-700">

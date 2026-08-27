@@ -221,17 +221,14 @@ describe('DELETE /api/users/:id — last-active-admin delete guard', () => {
     expect(JSON.parse(res.body).error).toBe('User unavailable');
   });
   // ── Test 3 ────────────────────────────────────────────────────────────────
-  it('should return 200 when deleting an admin while multiple active admins exist', async () => {
-    // Both admins are currently active — deleting the second one must succeed
+  it('should reject deleting any Admin account', async () => {
     const res = await inject('DELETE', `/api/v1/users/${secondAdminId}`, {
       payload: {},
     });
-    expect(res.statusCode).toBe(200);
-    expect(JSON.parse(res.body).message).toBe('Soft-deleted');
-    // Restore for the remaining tests
-    await pool.query('UPDATE users SET deleted_at = NULL WHERE email = $1', [
-      SECOND_ADMIN_EMAIL,
-    ]);
+    expect(res.statusCode).toBe(409);
+    expect(JSON.parse(res.body).error).toBe(
+      'Admin accounts cannot be deleted.'
+    );
   });
   // ── Test 4 ────────────────────────────────────────────────────────────────
   it('should return 200 when deleting an intern', async () => {

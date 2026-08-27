@@ -260,6 +260,15 @@ function parseSheet(sheetName, sheet, sheetOrder = 0) {
       phone,
       email,
       workbookStatus,
+      workbookStatusSource: workbookStatus
+        ? {
+            status: workbookStatus,
+            sheet: sheetName,
+            row: rowIndex + 1,
+            sheetOrder,
+            latestAttendanceDate: dateColumns.at(-1)?.date || null,
+          }
+        : null,
       completionDate,
       completionDateSource: completionDate
         ? {
@@ -305,6 +314,9 @@ function newCanonical(record, id) {
     phone: record.phone,
     email: record.email,
     workbookStatus: record.workbookStatus,
+    workbookStatusSources: record.workbookStatusSource
+      ? [record.workbookStatusSource]
+      : [],
     completionDate: record.completionDate,
     completionDateSources: record.completionDateSource
       ? [record.completionDateSource]
@@ -332,6 +344,7 @@ function mergeCanonical(target, source, aliasMap, canonicals) {
   target.completionDateSources.push(...source.completionDateSources);
   target.extensionEvidence.push(...source.extensionEvidence);
   target.workbookStatus ||= source.workbookStatus;
+  target.workbookStatusSources.push(...source.workbookStatusSources);
   target.lifecycleEvents.push(...source.lifecycleEvents);
   source.sources.forEach((item) => target.sources.add(item));
   target.sourceRows.push(...source.sourceRows);
@@ -340,7 +353,10 @@ function mergeCanonical(target, source, aliasMap, canonicals) {
   }
   canonicals.delete(source);
 }
-function mergeInterns(sheets) {
+function mergeInterns(
+  sheets,
+  { asOfDate = new Date().toISOString().slice(0, 10) } = {}
+) {
   const aliasMap = new Map();
   const canonicals = new Set();
   const conflicts = [];
@@ -374,6 +390,9 @@ function mergeInterns(sheets) {
       }
       if (record.workbookStatus)
         canonical.workbookStatus = record.workbookStatus;
+      if (record.workbookStatusSource) {
+        canonical.workbookStatusSources.push(record.workbookStatusSource);
+      }
       canonical.lifecycleEvents.push(...record.lifecycleEvents);
       canonical.sources.add(record.sourceSheet);
       canonical.sourceRows.push({
@@ -441,6 +460,23 @@ function mergeInterns(sheets) {
     const lifecycleEvents = intern.lifecycleEvents.sort((a, b) =>
       a.date.localeCompare(b.date)
     );
+    const workbookStatusSources = [...intern.workbookStatusSources].sort(
+      (a, b) =>
+        completionSourcePeriod(a).localeCompare(completionSourcePeriod(b)) ||
+        a.row - b.row
+    );
+    const latestWorkbookStatusSource = workbookStatusSources.at(-1) || null;
+    const effectiveLifecycleEvents = lifecycleEvents.filter(
+      (event) => event.date <= asOfDate
+    );
+    const latestLifecycleEvent = effectiveLifecycleEvents.at(-1) || null;
+    const authoritativeLifecycle =
+      latestLifecycleEvent &&
+      (!latestWorkbookStatusSource ||
+        latestLifecycleEvent.date >=
+          completionSourcePeriod(latestWorkbookStatusSource))
+        ? latestLifecycleEvent
+        : null;
     const completionDateSources = [...intern.completionDateSources].sort(
       (a, b) =>
         completionSourcePeriod(b).localeCompare(completionSourcePeriod(a)) ||
@@ -499,7 +535,10 @@ function mergeInterns(sheets) {
       code: intern.code,
       phone: intern.phone,
       email: intern.email,
-      workbookStatus: intern.workbookStatus,
+      workbookStatus:
+        latestWorkbookStatusSource?.status || intern.workbookStatus,
+      workbookStatusSources,
+      latestWorkbookStatusSource,
       completionDate: latestCompletionDateSource?.date || intern.completionDate,
       completionDateSources,
       completionDateHistory: chronologicalCompletionSources,
@@ -511,7 +550,7 @@ function mergeInterns(sheets) {
       extensionDetectedFromAttendance,
       completionReviewReasons,
       joinedDate: intern.joinedDate,
-      lifecycle: lifecycleEvents.at(-1) || null,
+      lifecycle: authoritativeLifecycle,
       lifecycleEvents,
       attendance,
       sources: [...intern.sources],
@@ -575,6 +614,25 @@ function parseProfileSheet(workbook, sheetName, { requireCode }) {
     'END DATE',
     'COMPLETION DATE',
   ]);
+  const collegeIndex = flexibleHeaderIndex(headers, [
+    'COLLEGE NAME',
+    'CURRENT/LAST COLLEGE NAME',
+  ]);
+  const courseIndex = flexibleHeaderIndex(headers, [
+    'COURSE',
+    'DEGREE',
+    'COURSE/STREAM',
+  ]);
+  const domainIndex = flexibleHeaderIndex(headers, [
+    'DOMAIN',
+    'DOMAIN NAME',
+    'INTERNSHIP DOMAIN NAME (AS PER OFFER LETTER)',
+  ]);
+  const offerLetterIndex = flexibleHeaderIndex(headers, [
+    'UPLOAD OFFER LETTER',
+    'OFFER LETTER',
+    'OFFER LETTER URL',
+  ]);
   if (emailIndex < 0 || phoneIndex < 0 || (requireCode && codeIndex < 0)) {
     throw new Error(
       `${sheetName} must contain Email and Mobile${requireCode ? ' plus Intern Code' : ''}`
@@ -593,62 +651,302 @@ function parseProfileSheet(workbook, sheetName, { requireCode }) {
       code,
       joiningDate: joiningIndex >= 0 ? profileDate(row[joiningIndex]) : null,
       endingDate: endingIndex >= 0 ? profileDate(row[endingIndex]) : null,
+      college: collegeIndex >= 0 ? clean(row[collegeIndex]) || null : null,
+      course: courseIndex >= 0 ? clean(row[courseIndex]) || null : null,
+      domain: domainIndex >= 0 ? clean(row[domainIndex]) || null : null,
+      offerLetterUrl:
+        offerLetterIndex >= 0 ? clean(row[offerLetterIndex]) || null : null,
       sourceSheet: sheetName,
       sourceRow: index + 1,
     });
   }
   return profiles;
 }
+
+function parseActiveInternsMaster(workbook, sheetName) {
+  const sheet = workbook.Sheets[sheetName];
+  const rows = XLSX.utils.sheet_to_json(sheet, {
+    header: 1,
+    raw: true,
+    defval: null,
+  });
+  const headerRow = rows.findIndex((row) =>
+    row.some((cell) => normalized(cell) === 'INTERN CODE')
+  );
+  if (headerRow < 0) {
+    throw new Error('Active Interns Master header row was not found');
+  }
+  const headers = rows[headerRow];
+  const index = (labels) => flexibleHeaderIndex(headers, labels);
+  const columns = {
+    name: index(['NAME']),
+    status: index(['STATUS']),
+    code: index(['INTERN CODE']),
+    phone: index(['MOBILE NO']),
+    whatsapp: index(['WHATSAPP NO']),
+    email: index(['EMAIL ID']),
+    domain: index(['DOMAIN']),
+    department: index(['DEPARTMENT']),
+    location: index(['LOCATION']),
+    college: index(['COLLEGE']),
+    course: index(['COURSE']),
+    year: index(['YEAR']),
+    position: index(['POSITION']),
+    offerLetter: index(['OFFER LETTER']),
+    joiningDate: index(['JOINING DATE']),
+    completionDate: index(['COMPLETION DATE']),
+  };
+  const required = [
+    'name',
+    'status',
+    'code',
+    'phone',
+    'email',
+    'domain',
+    'department',
+    'joiningDate',
+    'completionDate',
+  ];
+  const missing = required.filter((field) => columns[field] < 0);
+  if (missing.length) {
+    throw new Error(
+      `Active Interns Master is missing required columns: ${missing.join(', ')}`
+    );
+  }
+  const profiles = [];
+  const seen = { code: new Set(), phone: new Set(), email: new Set() };
+  for (let rowIndex = headerRow + 1; rowIndex < rows.length; rowIndex += 1) {
+    const row = rows[rowIndex];
+    const name = clean(row[columns.name]);
+    if (!name) continue;
+    const status = normalized(row[columns.status]);
+    if (status !== 'ACTIVE') continue;
+    const code = normalizeCode(row[columns.code]) || null;
+    const phone = normalizePhone(row[columns.phone]);
+    const email = normalizeEmail(row[columns.email]);
+    if (!code || !phone || !email) {
+      throw new Error(
+        `Active Interns Master row ${rowIndex + 1} requires Intern Code, Mobile No, and Email ID`
+      );
+    }
+    for (const [field, value] of Object.entries({ code, phone, email })) {
+      if (seen[field].has(value)) {
+        throw new Error(
+          `Active Interns Master contains duplicate ${field} at row ${rowIndex + 1}`
+        );
+      }
+      seen[field].add(value);
+    }
+    const joiningDate = profileDate(row[columns.joiningDate]);
+    const endingDate = profileDate(row[columns.completionDate]);
+    if (!joiningDate || !endingDate) {
+      throw new Error(
+        `Active Interns Master row ${rowIndex + 1} has an invalid Joining Date or Completion Date`
+      );
+    }
+    if (joiningDate.slice(0, 4) < '2020' || joiningDate > endingDate) {
+      throw new Error(
+        `Active Interns Master row ${rowIndex + 1} has an implausible date range`
+      );
+    }
+    profiles.push({
+      name,
+      status: 'ACTIVE',
+      code,
+      phone,
+      whatsapp:
+        columns.whatsapp >= 0 ? normalizePhone(row[columns.whatsapp]) : null,
+      email,
+      domain: clean(row[columns.domain]) || null,
+      department: clean(row[columns.department]) || null,
+      location:
+        columns.location >= 0 ? clean(row[columns.location]) || null : null,
+      college:
+        columns.college >= 0 ? clean(row[columns.college]) || null : null,
+      course: columns.course >= 0 ? clean(row[columns.course]) || null : null,
+      yearOfStudy: columns.year >= 0 ? clean(row[columns.year]) || null : null,
+      position:
+        columns.position >= 0 ? clean(row[columns.position]) || null : null,
+      offerLetterUrl:
+        columns.offerLetter >= 0
+          ? clean(row[columns.offerLetter]) || null
+          : null,
+      joiningDate,
+      endingDate,
+      sourceSheet: sheetName,
+      sourceRow: rowIndex + 1,
+    });
+  }
+  return profiles;
+}
+function parseInternsProfileSheet(workbook, sheetName) {
+  const sheet = workbook.Sheets[sheetName];
+  const rows = XLSX.utils.sheet_to_json(sheet, {
+    header: 1,
+    raw: true,
+    defval: null,
+  });
+  const expectedHeader = rows.findIndex((row) =>
+    row.some((cell) => normalized(cell) === 'INTERN CODE')
+  );
+  if (expectedHeader >= 0) {
+    return parseProfileSheet(workbook, sheetName, { requireCode: true });
+  }
+  // The live Interns export is headerless. Its stable columns are:
+  // department, code, onboarding, name, email, phone, college, degree,
+  // branch, enrollment, LinkedIn, domain, start, end, offer letter, address.
+  const profiles = [];
+  for (let index = 0; index < rows.length; index += 1) {
+    const row = rows[index];
+    const code = normalizeCode(row[1]) || null;
+    const email = normalizeEmail(row[4]);
+    const phone = normalizePhone(row[5]);
+    if (!code && !email && !phone) continue;
+    profiles.push({
+      email,
+      phone,
+      code,
+      joiningDate: profileDate(row[12]),
+      endingDate: profileDate(row[13]),
+      college: clean(row[6]) || null,
+      course:
+        [clean(row[7]), clean(row[8])].filter(Boolean).join(' - ') || null,
+      domain: clean(row[11]) || null,
+      offerLetterUrl: clean(row[14]) || null,
+      sourceSheet: sheetName,
+      sourceRow: index + 1,
+    });
+  }
+  return profiles;
+}
+
 function parseEmailDetailsWorkbook(buffer) {
   const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: false });
+  const activeMaster = workbook.SheetNames.find(
+    (name) => normalized(name) === 'ACTIVE INTERNS MASTER'
+  );
   const fullDetails = workbook.SheetNames.find(
     (name) => normalized(name) === 'FULL DETAILS'
   );
   const internDetails = workbook.SheetNames.find(
     (name) => normalized(name) === 'INTERN DETAILS'
   );
-  if (!fullDetails) {
-    throw new Error('Email-details workbook must contain a Full details sheet');
+  const internsSheet = workbook.SheetNames.find(
+    (name) => normalized(name) === 'INTERNS'
+  );
+  if (!activeMaster && !fullDetails) {
+    throw new Error(
+      'Email-details workbook must contain Active Interns Master or Full details'
+    );
   }
-  const primaryProfiles = parseProfileSheet(workbook, fullDetails, {
-    requireCode: true,
-  });
+  const masterProfiles = activeMaster
+    ? parseActiveInternsMaster(workbook, activeMaster)
+    : [];
+  const primaryProfiles = fullDetails
+    ? parseProfileSheet(workbook, fullDetails, { requireCode: true })
+    : [];
   const fallbackProfiles = internDetails
     ? parseProfileSheet(workbook, internDetails, { requireCode: false })
     : [];
+  const internsProfiles = internsSheet
+    ? parseInternsProfileSheet(workbook, internsSheet)
+    : [];
   return {
-    sheet: fullDetails,
+    sheet: activeMaster || fullDetails,
+    masterSheet: activeMaster || null,
+    fullDetailsSheet: fullDetails || null,
     fallbackSheet: internDetails || null,
+    internsSheet: internsSheet || null,
     profiles: [
+      ...masterProfiles.map((profile) => ({ ...profile, sourcePriority: 0 })),
       ...primaryProfiles.map((profile) => ({ ...profile, sourcePriority: 1 })),
       ...fallbackProfiles.map((profile) => ({ ...profile, sourcePriority: 2 })),
+      ...internsProfiles.map((profile) => ({ ...profile, sourcePriority: 3 })),
     ],
+    masterRows: masterProfiles.length,
     primaryRows: primaryProfiles.length,
     fallbackRows: fallbackProfiles.length,
+    internsRows: internsProfiles.length,
   };
 }
-function ratingName(value) {
-  return clean(value)
-    .replace(/\s*\((?:captain|team leader|tl|stl)\)\s*$/i, '')
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, ' ');
+function ratingMonth(sheetName) {
+  const months = {
+    JAN: '01',
+    JANUARY: '01',
+    FEB: '02',
+    FEBRUARY: '02',
+    MAR: '03',
+    MARCH: '03',
+    APR: '04',
+    APRIL: '04',
+    MAY: '05',
+    JUN: '06',
+    JUNE: '06',
+    JUL: '07',
+    JULY: '07',
+    AUG: '08',
+    AUGUST: '08',
+    SEP: '09',
+    SEPT: '09',
+    SEPTEMBER: '09',
+    OCT: '10',
+    OCTOBER: '10',
+    NOV: '11',
+    NOVEMBER: '11',
+    DEC: '12',
+    DECEMBER: '12',
+  };
+  const token = normalized(sheetName).match(/^RATINGS\s*-\s*([A-Z]+)/)?.[1];
+  return months[token] || null;
+}
+function ratingPeriod(header, month, year) {
+  const numbers =
+    clean(header)
+      .match(/\d{1,2}/g)
+      ?.map(Number) || [];
+  if (!month || numbers.length < 2) return null;
+  const [startDay, endDay] = numbers;
+  const pad = (value) => String(value).padStart(2, '0');
+  const startDate = `${year}-${month}-${pad(startDay)}`;
+  const endDate = `${year}-${month}-${pad(endDay)}`;
+  return { startDate, endDate, ratingDate: endDate };
+}
+function isRatingReasonHeader(value) {
+  return /reason|suggestion|improvement/i.test(clean(value));
+}
+function ratingReasonIndex(headers, scoreIndex) {
+  if (isRatingReasonHeader(headers[scoreIndex + 1])) return scoreIndex + 1;
+  if (isRatingReasonHeader(headers[scoreIndex - 1])) return scoreIndex - 1;
+  return -1;
 }
 function parseRatingsSheets(workbook, interns) {
-  const byName = new Map();
+  const byCode = new Map();
+  const byPhone = new Map();
   for (const intern of interns) {
-    const key = ratingName(intern.name);
-    const list = byName.get(key) || [];
-    list.push(intern);
-    byName.set(key, list);
     intern.ratings = [];
+    const code = normalizeCode(intern.code);
+    const phone = normalizePhone(intern.phone);
+    if (code) byCode.set(code, intern);
+    if (phone) byPhone.set(phone, intern);
   }
+  const attendanceYears = interns
+    .flatMap((intern) =>
+      (intern.attendance || []).map((item) => String(item.date).slice(0, 4))
+    )
+    .filter((year) => /^\d{4}$/.test(year));
+  const year =
+    attendanceYears.sort().at(-1) || String(new Date().getUTCFullYear());
   const summary = {
     ratingSheets: 0,
     ratingRecords: 0,
-    ratingNonActiveExcluded: 0,
-    ratingUnmatched: 0,
-    ratingAmbiguous: 0,
+    ratingScoreRecords: 0,
+    ratingReasonOnlyRecords: 0,
+    ratingEmptyWeekRecords: 0,
+    ratingIdentityMissing: 0,
+    ratingIdentityConflicts: 0,
+    ratingNonNumericExcluded: 0,
+    ratingAfterCompletionExcluded: 0,
+    ratingUnsupportedSheets: 0,
   };
   for (const sheetName of workbook.SheetNames.filter((name) =>
     /^Ratings\s*-\s*.+$/i.test(clean(name))
@@ -662,75 +960,183 @@ function parseRatingsSheets(workbook, interns) {
     const head = rows.findIndex((row) =>
       row.some((cell) => normalized(cell) === 'NAME')
     );
-    if (head < 0) continue;
-    const headers = rows[head],
-      nameIndex = headerIndex(headers, 'NAME'),
-      statusIndex = headerIndex(headers, 'STATUS');
-    for (let r = head + 1; r < rows.length; r++) {
-      const row = rows[r],
-        name = clean(row[nameIndex]);
-      if (!name) continue;
-      const matches = byName.get(ratingName(name)) || [];
-      if (!matches.length) {
-        summary.ratingUnmatched++;
-        continue;
-      }
-      if (matches.length > 1) {
-        summary.ratingAmbiguous++;
-        continue;
-      }
-      const intern = matches[0];
-      const sheetStatus = statusIndex >= 0 ? normalized(row[statusIndex]) : '';
-      const live = normalized(
-        intern.lifecycle?.status || intern.workbookStatus
-      );
-      if (live !== 'ACTIVE' || (sheetStatus && sheetStatus !== 'ACTIVE')) {
-        summary.ratingNonActiveExcluded++;
-        continue;
-      }
-      for (let c = 0; c < headers.length; c++) {
-        const header = clean(headers[c]),
-          score = Number(row[c]);
+    if (head < 0) {
+      summary.ratingUnsupportedSheets++;
+      continue;
+    }
+    const headers = rows[head];
+    const codeIndex = headerIndex(headers, 'INTERN CODE');
+    const phoneIndex = headerIndex(headers, 'CONTACT INFO');
+    const completionIndex = flexibleHeaderIndex(headers, [
+      'COMPLETION DATE',
+      'COMPLITION DATE',
+    ]);
+    if (codeIndex < 0 || phoneIndex < 0) {
+      summary.ratingUnsupportedSheets++;
+      continue;
+    }
+    const month = ratingMonth(sheetName);
+    const periods = [];
+    const usedScoreColumns = new Set();
+    const reasonColumns = headers
+      .map((header, index) => ({
+        index,
+        header: clean(header),
+      }))
+      .filter((item) => isRatingReasonHeader(item.header));
+
+    const firstReason = reasonColumns[0];
+    const firstLeftPeriod =
+      firstReason && firstReason.index > 0
+        ? ratingPeriod(headers[firstReason.index - 1], month, year)
+        : null;
+    const firstRightPeriod =
+      firstReason && firstReason.index + 1 < headers.length
+        ? ratingPeriod(headers[firstReason.index + 1], month, year)
+        : null;
+    const preferredReasonSide = firstLeftPeriod ? 'LEFT' : 'RIGHT';
+
+    for (
+      let reasonOrder = 0;
+      reasonOrder < reasonColumns.length;
+      reasonOrder++
+    ) {
+      const reasonColumn = reasonColumns[reasonOrder];
+      const candidates =
+        preferredReasonSide === 'LEFT'
+          ? [reasonColumn.index - 1, reasonColumn.index + 1]
+          : [reasonColumn.index + 1, reasonColumn.index - 1];
+      let scoreIndex = -1;
+      let period = null;
+      for (const candidate of candidates) {
         if (
-          ['SNO', 'SRNO', 'SRNO.', 'COLUMN 1'].includes(normalized(header)) ||
-          !header ||
-          !Number.isFinite(score) ||
-          score < 1 ||
-          score > 10
-        )
+          candidate < 0 ||
+          candidate >= headers.length ||
+          usedScoreColumns.has(candidate)
+        ) {
           continue;
-        let remarks = null;
-        for (let n = c + 1; n < Math.min(c + 4, headers.length); n++) {
-          if (/reason|suggestion|improvement/i.test(clean(headers[n]))) {
-            remarks = clean(row[n]) || null;
-            break;
-          }
         }
+        const candidatePeriod = ratingPeriod(headers[candidate], month, year);
+        if (!candidatePeriod) continue;
+        scoreIndex = candidate;
+        period = candidatePeriod;
+        break;
+      }
+      if (!period || scoreIndex < 0) continue;
+      usedScoreColumns.add(scoreIndex);
+      periods.push({
+        index: scoreIndex,
+        header: clean(headers[scoreIndex]),
+        reasonIndex: reasonColumn.index,
+        weekNumber: reasonOrder + 1,
+        period,
+      });
+    }
+
+    for (let index = 0; index < headers.length; index++) {
+      if (usedScoreColumns.has(index) || isRatingReasonHeader(headers[index])) {
+        continue;
+      }
+      const period = ratingPeriod(headers[index], month, year);
+      if (!period) continue;
+      periods.push({
+        index,
+        header: clean(headers[index]),
+        reasonIndex: ratingReasonIndex(headers, index),
+        weekNumber: periods.length + 1,
+        period,
+      });
+    }
+
+    periods.sort((a, b) =>
+      a.period.startDate.localeCompare(b.period.startDate)
+    );
+    for (let rowIndex = head + 1; rowIndex < rows.length; rowIndex++) {
+      const row = rows[rowIndex];
+      const code = normalizeCode(row[codeIndex]);
+      const phone = normalizePhone(row[phoneIndex]);
+      if (!code && !phone) continue;
+      if (!code || !phone) {
+        summary.ratingIdentityMissing++;
+        continue;
+      }
+      const codeMatch = byCode.get(code);
+      const phoneMatch = byPhone.get(phone);
+      if (!codeMatch || !phoneMatch || codeMatch !== phoneMatch) {
+        summary.ratingIdentityConflicts++;
+        continue;
+      }
+      const intern = codeMatch;
+      const completionDate =
+        completionIndex >= 0 ? profileDate(row[completionIndex]) : null;
+      for (const item of periods) {
+        const raw = row[item.index];
+        const text = clean(raw);
+        const numeric = typeof raw === 'number' ? raw : Number(text);
+        const score =
+          Number.isFinite(numeric) && numeric >= 1 && numeric <= 10
+            ? Number(numeric.toFixed(1))
+            : null;
+        const remarks =
+          item.reasonIndex >= 0 ? clean(row[item.reasonIndex]) || null : null;
+        if (text && score == null && text !== '-') {
+          summary.ratingNonNumericExcluded++;
+        }
+        const continuationEvidence = /\bextend(?:ed|ing|s|ion)?\b/i.test(
+          remarks || ''
+        );
+        if (
+          completionDate &&
+          completionDate < item.period.startDate &&
+          !continuationEvidence
+        ) {
+          summary.ratingAfterCompletionExcluded++;
+          continue;
+        }
+        const sourceKey = [
+          sheetName,
+          item.period.startDate,
+          item.period.endDate,
+          code,
+        ].join('|');
         intern.ratings.push({
-          period: `${sheetName}:${header}`,
           score,
           remarks,
           sourceSheet: sheetName,
-          sourceRow: r + 1,
+          sourceRow: rowIndex + 1,
+          sourceKey,
+          weekNumber: item.weekNumber,
+          ...item.period,
         });
         summary.ratingRecords++;
+        if (score != null) summary.ratingScoreRecords++;
+        else if (remarks) summary.ratingReasonOnlyRecords++;
+        else summary.ratingEmptyWeekRecords++;
       }
     }
   }
   return summary;
 }
-function previewWorkbook(buffer, { includeComparisonData = false } = {}) {
+function previewWorkbook(
+  buffer,
+  {
+    includeComparisonData = false,
+    asOfDate = new Date().toISOString().slice(0, 10),
+  } = {}
+) {
   const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: false });
   const sheets = workbook.SheetNames.map((name, sheetOrder) =>
     parseSheet(name, workbook.Sheets[name], sheetOrder)
   );
   const merged = mergeInterns(
-    sheets.filter((sheet) => !sheet.ignored && !sheet.skipped)
+    sheets.filter((sheet) => !sheet.ignored && !sheet.skipped),
+    { asOfDate }
   );
   const attendanceCount = merged.interns.reduce(
     (sum, intern) => sum + intern.attendance.length,
     0
   );
+  const ratingSummary = parseRatingsSheets(workbook, merged.interns);
   return {
     mode: 'preview-only',
     importBlocked: merged.conflicts.length > 0,
@@ -748,6 +1154,7 @@ function previewWorkbook(buffer, { includeComparisonData = false } = {}) {
       attendanceRecords: attendanceCount,
       reviewRequired: merged.conflicts.length,
       warnings: sheets.reduce((sum, sheet) => sum + sheet.warnings.length, 0),
+      ...ratingSummary,
     },
     sheets: sheets.map(({ interns, ...sheet }) => ({
       ...sheet,

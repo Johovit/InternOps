@@ -105,7 +105,7 @@ async function detailedAttendanceExport(departmentId, from, to) {
         AND lifecycle_effective_date BETWEEN $1 AND $2
     ), timeline AS (
       SELECT u.full_name,u.email,u.role,COALESCE(u.internship_status,'ACTIVE') AS internship_status,
-             a.date::text AS date,a.status,a.remarks
+             a.date::text AS date,a.status::text AS status,a.remarks
       FROM attendance a JOIN selected_users u ON u.id=a.user_id
       WHERE a.deleted_at IS NULL AND a.date BETWEEN $1 AND $2
         AND NOT EXISTS (
@@ -114,7 +114,7 @@ async function detailedAttendanceExport(departmentId, from, to) {
         )
       UNION ALL
       SELECT u.full_name,u.email,u.role,COALESCE(u.internship_status,'ACTIVE') AS internship_status,
-             marker.date::text,marker.status,NULL AS remarks
+             marker.date::text AS date,marker.status::text AS status,NULL::text AS remarks
       FROM lifecycle_markers marker JOIN selected_users u ON u.id=marker.id
     )
     SELECT * FROM timeline

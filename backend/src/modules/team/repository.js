@@ -4,8 +4,8 @@ const argon2 = require('argon2');
 // Detail columns a manager is allowed to read for each member.
 const MEMBER_COLUMNS = `
   u.id, u.email, u.role, u.full_name, u.suspended, u.avatar_url, u.created_at,
-  u.department_id, u.manager_id, u.phone, u.college, u.course, u.year_of_study,
-  u.position, u.joining_date, u.internship_status, u.lifecycle_effective_date, u.completion_date, u.extended_completion_date, u.location, u.notes
+  u.department_id, u.manager_id, u.intern_code, u.phone, u.college, u.course, u.year_of_study,
+  u.position, u.internship_domain, u.offer_letter_url, u.joining_date, u.internship_status, u.lifecycle_effective_date, u.completion_date, u.extended_completion_date, u.location, u.notes
 `;
 
 // Performance summary (attendance %, avg rating, verified tasks) joined per member.
@@ -50,19 +50,37 @@ const PERFORMANCE_COLUMNS = `
 // Everyone in the requester's downward hierarchy (direct + indirect reports).
 async function getTeamMembers(managerId, departmentId) {
   const query = `
-    WITH RECURSIVE team AS (
-      SELECT id, manager_id, 1 AS depth
-      FROM users WHERE manager_id = $1 AND deleted_at IS NULL
+    WITH RECURSIVE requester AS (
+      SELECT id, role, department_id
+      FROM users
+      WHERE id = $1 AND deleted_at IS NULL
+    ), team AS (
+      SELECT u.id, u.manager_id, 1 AS depth
+      FROM users u
+      CROSS JOIN requester r
+      WHERE u.deleted_at IS NULL
+        AND u.role <> 'ADMIN'
+        AND u.id <> r.id
+        AND (
+          (r.role = 'SENIOR_TL' AND u.department_id = r.department_id)
+          OR (r.role <> 'SENIOR_TL' AND u.manager_id = r.id)
+        )
       UNION ALL
       SELECT u.id, u.manager_id, t.depth + 1
       FROM users u INNER JOIN team t ON u.manager_id = t.id
+      CROSS JOIN requester r
       WHERE u.deleted_at IS NULL
+        AND r.role <> 'SENIOR_TL'
+        AND t.depth < 100
     )
-    SELECT ${MEMBER_COLUMNS}, t.depth, ${PERFORMANCE_COLUMNS}
+    SELECT ${MEMBER_COLUMNS}, MIN(t.depth) AS depth, ${PERFORMANCE_COLUMNS}
     FROM team t
     JOIN users u ON u.id = t.id
     ${PERFORMANCE_JOINS}
     WHERE ($2::uuid IS NULL OR u.department_id = $2)
+    GROUP BY u.id, m.full_name, d.name, att.present_count, att.informed_count,
+      att.leave_count, att.attendance_total, rat.avg_rating, rat.rating_count,
+      tsk.verified_tasks, tsk.pending_proofs, tsk.total_tasks
     ORDER BY
       CASE u.role
         WHEN 'SENIOR_TL' THEN 0
@@ -194,11 +212,18 @@ async function getMemberHistory(id) {
 // Recent proofs awaiting verification across the requester's whole team.
 async function getPendingProofs(managerId, limit = 50) {
   const query = `
-    WITH RECURSIVE team AS (
-      SELECT id FROM users WHERE manager_id = $1 AND deleted_at IS NULL
+    WITH RECURSIVE requester AS (
+      SELECT id, role, department_id FROM users
+      WHERE id = $1 AND deleted_at IS NULL
+    ), team AS (
+      SELECT u.id FROM users u CROSS JOIN requester r
+      WHERE u.deleted_at IS NULL AND u.role <> 'ADMIN' AND u.id <> r.id
+        AND ((r.role = 'SENIOR_TL' AND u.department_id = r.department_id)
+          OR (r.role <> 'SENIOR_TL' AND u.manager_id = r.id))
       UNION ALL
       SELECT u.id FROM users u INNER JOIN team t ON u.manager_id = t.id
-      WHERE u.deleted_at IS NULL
+      CROSS JOIN requester r
+      WHERE u.deleted_at IS NULL AND r.role <> 'SENIOR_TL'
     )
     SELECT p.id, p.intern_id, p.image_path, p.status, p.created_at,
            u.full_name AS intern_name, u.email AS intern_email,

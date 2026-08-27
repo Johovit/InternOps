@@ -260,26 +260,17 @@ describe('PATCH /api/users/:id/suspend — Issue #468', () => {
   });
 
   // ── Test 3 ────────────────────────────────────────────────────────────────
-  it('should return 200 when suspending an admin while multiple active admins exist', async () => {
-    // Both admins are currently active
+  it('should reject suspending any Admin account', async () => {
     const res = await inject(
       'PATCH',
       `/api/v1/users/${secondAdminId}/suspend`,
-      {
-        payload: {},
-      }
+      { payload: {} }
     );
-
-    expect(res.statusCode).toBe(200);
-    const body = JSON.parse(res.body);
-    expect(body.message).toBe('Suspended');
-
-    // Restore for later tests
-    await inject('PATCH', `/api/v1/users/${secondAdminId}/activate`, {
-      payload: {},
-    });
+    expect(res.statusCode).toBe(409);
+    expect(JSON.parse(res.body).error).toBe(
+      'Admin accounts cannot be suspended.'
+    );
   });
-
   // ── Test 4 ────────────────────────────────────────────────────────────────
   it('should return 200 when suspending an intern', async () => {
     const res = await inject('PATCH', `/api/v1/users/${internId}/suspend`, {

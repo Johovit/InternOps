@@ -43,9 +43,21 @@ function intern(overrides = {}) {
     email: 'current@example.com',
     emailMatch: 'PHONE',
     workbookStatus: 'Active',
+    department: 'AI Tutor',
     joinedDate: '2026-08-01',
     attendance: [{ date: '2026-08-02', status: 'PRESENT', remarks: null }],
-    ratings: [{ score: 9 }],
+    ratings: [
+      {
+        score: 9,
+        remarks: 'Good work',
+        sourceSheet: 'Ratings - Aug',
+        sourceRow: 2,
+        sourceKey: 'Ratings - Aug|2026-08-10|2026-08-15|INT-001',
+        startDate: '2026-08-10',
+        endDate: '2026-08-15',
+        ratingDate: '2026-08-15',
+      },
+    ],
     ...overrides,
   };
 }
@@ -55,9 +67,12 @@ function clientWith(overrides = {}) {
   const client = {
     query: jest.fn(async (sql) => {
       queries.push(sql);
-      if (sql.startsWith('SELECT id FROM departments'))
-        return { rows: [{ id: 'department-1' }], rowCount: 1 };
-      if (sql.includes("WHERE id=$1 AND role IN ('TL','SENIOR_TL')"))
+      if (sql.startsWith('SELECT id,name FROM departments'))
+        return {
+          rows: [{ id: 'department-1', name: 'AI Tutor' }],
+          rowCount: 1,
+        };
+      if (sql.includes("WHERE id=$1 AND role IN ('CAPTAIN','TL','SENIOR_TL')"))
         return {
           rows: [
             {
@@ -86,7 +101,15 @@ function clientWith(overrides = {}) {
           rows: overrides.phoneOwners || [],
           rowCount: (overrides.phoneOwners || []).length,
         };
-      if (sql.includes('FROM users WHERE deleted_at IS NULL'))
+      if (sql.startsWith('SELECT id FROM users WHERE UPPER(intern_code)='))
+        return {
+          rows: overrides.codeOwners || [],
+          rowCount: (overrides.codeOwners || []).length,
+        };
+      if (
+        sql.includes('FROM users u') &&
+        sql.includes('LEFT JOIN users current_manager')
+      )
         return {
           rows: overrides.existingUsers || [],
           rowCount: (overrides.existingUsers || []).length,
@@ -119,6 +142,50 @@ beforeEach(() => {
   service.applyEmailProfiles.mockReturnValue({ interns: [intern()] });
 });
 
+test('skips a fully unidentified active row without opening account work for it', async () => {
+  const valid = intern();
+  const incomplete = intern({
+    name: 'New Intern',
+    code: null,
+    phone: null,
+    email: null,
+    emailMatch: 'UNMATCHED',
+    attendance: [{ date: '2026-08-26', status: 'PRESENT', remarks: null }],
+    ratings: [],
+  });
+  parser.previewWorkbook.mockReturnValue({
+    importBlocked: false,
+    comparisonInterns: [valid, incomplete],
+  });
+  service.applyEmailProfiles.mockReturnValue({ interns: [valid, incomplete] });
+  const { client } = clientWith();
+  dbTx.mockImplementation(async (work) => work(client));
+  const result = await execute(workbook, emails, options);
+  expect(result.summary).toMatchObject({
+    activeInterns: 1,
+    incompleteIdentitySkipped: 1,
+    accountsCreated: 1,
+  });
+});
+test('passes asOfDate to lifecycle parsing before selecting active candidates', async () => {
+  parser.previewWorkbook.mockReturnValue({
+    importBlocked: false,
+    comparisonInterns: [intern()],
+  });
+  const { client } = clientWith();
+  dbTx.mockImplementation(async (work) => work(client));
+
+  await execute(workbook, emails, {
+    ...options,
+    asOfDate: '2026-08-26',
+  });
+
+  expect(parser.previewWorkbook).toHaveBeenCalledWith(workbook, {
+    includeComparisonData: true,
+    asOfDate: '2026-08-26',
+  });
+});
+
 test('rejects changed workbooks before opening a transaction', async () => {
   await expect(
     execute(workbook, emails, {
@@ -129,14 +196,15 @@ test('rejects changed workbooks before opening a transaction', async () => {
   expect(dbTx).not.toHaveBeenCalled();
 });
 
-test('rejects an already completed exact import', async () => {
+test('allows an already completed exact import to run idempotently', async () => {
   const { client } = clientWith({
     priorBatch: { id: 'old', status: 'COMPLETED' },
   });
   dbTx.mockImplementation(async (work) => work(client));
-  await expect(execute(workbook, emails, options)).rejects.toMatchObject({
-    statusCode: 409,
+  await expect(execute(workbook, emails, options)).resolves.toMatchObject({
+    success: true,
   });
+  expect(dbTx).toHaveBeenCalled();
 });
 
 test('rejects an identical import already running', async () => {
@@ -149,7 +217,7 @@ test('rejects an identical import already running', async () => {
   });
 });
 
-test('bulk creates one account and attendance without Ratings writes', async () => {
+test('bulk creates one account, attendance, and one weekly rating', async () => {
   const { client, queries } = clientWith();
   dbTx.mockImplementation(async (work) => work(client));
   const result = await execute(workbook, emails, options);
@@ -157,6 +225,7 @@ test('bulk creates one account and attendance without Ratings writes', async () 
     accountsCreated: 1,
     existingAccounts: 0,
     attendanceCreated: 1,
+    ratingsCreated: 1,
   });
   expect(
     queries.filter((sql) => sql.startsWith('INSERT INTO users'))
@@ -164,10 +233,24 @@ test('bulk creates one account and attendance without Ratings writes', async () 
   expect(
     queries.filter((sql) => sql.startsWith('INSERT INTO attendance'))
   ).toHaveLength(1);
-  expect(queries.some((sql) => /ratings/i.test(sql))).toBe(false);
+  expect(
+    queries.filter((sql) => sql.startsWith('INSERT INTO ratings'))
+  ).toHaveLength(1);
   expect(createAuditLog).toHaveBeenCalled();
 });
 
+test('weekly rating INSERT uses ten placeholders for ten values', async () => {
+  const { client, queries } = clientWith();
+  dbTx.mockImplementation(async (work) => work(client));
+  await execute(workbook, emails, options);
+  const sql = queries.find((query) => query.startsWith('INSERT INTO ratings'));
+  expect(sql).toBeTruthy();
+  const valuesMatch = sql.match(/VALUES \(([^)]+)\)/);
+  expect(valuesMatch[1].split(',')).toHaveLength(10);
+  expect(sql).toContain(
+    'AS v(rated_user_id,rated_by,score,remarks,created_at,period_start,period_end,source_sheet,source_row,source_key)'
+  );
+});
 test('reuses one matching account and skips identical attendance', async () => {
   const existingUsers = [
     {
@@ -178,6 +261,8 @@ test('reuses one matching account and skips identical attendance', async () => {
       intern_code: 'INT-001',
       department_id: 'department-1',
       manager_id: 'manager-1',
+      current_manager_role: 'TL',
+      current_manager_department_id: 'department-1',
     },
   ];
   const existingAttendance = [
@@ -204,6 +289,51 @@ test('reuses one matching account and skips identical attendance', async () => {
   expect(queries.some((sql) => sql.startsWith('INSERT INTO attendance'))).toBe(
     false
   );
+});
+
+test('preserves an existing Intern manager in the selected department', () => {
+  const plans = resolveExistingAccounts(
+    [intern()],
+    [
+      {
+        id: 'existing-1',
+        role: 'INTERN',
+        email: 'current@example.com',
+        phone: '9000000001',
+        intern_code: 'INT-001',
+        department_id: 'department-1',
+        manager_id: 'captain-1',
+        current_manager_role: 'CAPTAIN',
+        current_manager_department_id: 'department-1',
+      },
+    ],
+    { id: 'department-1' },
+    { id: 'manager-1' }
+  );
+  expect(plans[0].existing.manager_id).toBe('captain-1');
+});
+
+test('blocks an existing Intern whose current manager is outside the department', () => {
+  expect(() =>
+    resolveExistingAccounts(
+      [intern()],
+      [
+        {
+          id: 'existing-1',
+          role: 'INTERN',
+          email: 'current@example.com',
+          phone: '9000000001',
+          intern_code: 'INT-001',
+          department_id: 'department-1',
+          manager_id: 'captain-2',
+          current_manager_role: 'CAPTAIN',
+          current_manager_department_id: 'other-department',
+        },
+      ],
+      { id: 'department-1' },
+      { id: 'manager-1' }
+    )
+  ).toThrow(/current manager hierarchy/);
 });
 
 test('rejects an existing account assigned to another project group', () => {
@@ -237,6 +367,8 @@ test('rejects conflicting existing attendance instead of overwriting', async () 
       intern_code: 'INT-001',
       department_id: 'department-1',
       manager_id: 'manager-1',
+      current_manager_role: 'TL',
+      current_manager_department_id: 'department-1',
     },
   ];
   const existingAttendance = [
@@ -352,6 +484,93 @@ test('duplicate validation error contains masked review details', () => {
   ).toThrow(/s\*\*\*@example.com/);
 });
 
+test('corrects an outdated Intern Code when exact email and mobile match', async () => {
+  const corrected = intern({ code: 'CORRECT-001' });
+  parser.previewWorkbook.mockReturnValue({
+    importBlocked: false,
+    comparisonInterns: [corrected],
+  });
+  service.applyEmailProfiles.mockReturnValue({ interns: [corrected] });
+  const existingUsers = [
+    {
+      id: 'existing-1',
+      role: 'INTERN',
+      email: corrected.email,
+      phone: corrected.phone,
+      intern_code: 'OLD-001',
+      department_id: 'department-1',
+      manager_id: 'manager-1',
+      current_manager_role: 'TL',
+      current_manager_department_id: 'department-1',
+    },
+  ];
+  const { client, queries } = clientWith({ existingUsers });
+  dbTx.mockImplementation(async (work) => work(client));
+  const result = await execute(workbook, emails, options);
+  expect(result.summary.internCodesCorrected).toBe(1);
+  expect(queries).toContain(
+    'UPDATE users SET intern_code=$1,updated_at=NOW() WHERE id=$2 AND deleted_at IS NULL'
+  );
+  expect(createAuditLog).toHaveBeenCalledWith(
+    expect.objectContaining({
+      action: 'WORKBOOK_INTERN_CODE_CORRECTED',
+      details: expect.objectContaining({
+        oldCode: 'OLD-001',
+        newCode: 'CORRECT-001',
+      }),
+    }),
+    client
+  );
+});
+test('blocks an Intern Code correction without both exact email and mobile', () => {
+  expect(() =>
+    resolveExistingAccounts(
+      [intern({ code: 'CORRECT-001', phone: 'different-phone' })],
+      [
+        {
+          id: 'existing-1',
+          role: 'INTERN',
+          email: 'current@example.com',
+          phone: '9000000001',
+          intern_code: 'OLD-001',
+          department_id: 'department-1',
+          manager_id: 'manager-1',
+        },
+      ],
+      { id: 'department-1' },
+      { id: 'manager-1' }
+    )
+  ).toThrow(/Intern Code/);
+});
+test('blocks a corrected Intern Code already owned by another account', () => {
+  expect(() =>
+    resolveExistingAccounts(
+      [intern({ code: 'TAKEN-001' })],
+      [
+        {
+          id: 'existing-1',
+          role: 'INTERN',
+          email: 'current@example.com',
+          phone: '9000000001',
+          intern_code: 'OLD-001',
+          department_id: 'department-1',
+          manager_id: 'manager-1',
+        },
+        {
+          id: 'other-1',
+          role: 'INTERN',
+          email: 'other@example.com',
+          phone: '9000000002',
+          intern_code: 'TAKEN-001',
+          department_id: 'department-1',
+          manager_id: 'manager-1',
+        },
+      ],
+      { id: 'department-1' },
+      { id: 'manager-1' }
+    )
+  ).toThrow(/already assigned to another account/);
+});
 test('reuses selected TL account without changing role or credentials', async () => {
   const leader = intern({
     name: 'Manager',
@@ -418,6 +637,153 @@ test('blocks a leader identity from another project group', () => {
   ).toThrow(/another project group/);
 });
 
+test('replaces outdated profile values from Active Interns Master', async () => {
+  const corrected = intern({
+    college: 'Correct College',
+    course: 'B.Tech',
+    yearOfStudy: '2026',
+    location: 'Delhi',
+    domain: 'MERN Stack',
+    position: 'Intern',
+    profileJoiningDate: '2026-04-17',
+    profileEndingDate: '2026-10-17',
+    offerLetterUrl: 'https://example.com/offer',
+  });
+  parser.previewWorkbook.mockReturnValue({
+    importBlocked: false,
+    comparisonInterns: [corrected],
+  });
+  service.applyEmailProfiles.mockReturnValue({ interns: [corrected] });
+  const existingUsers = [
+    {
+      id: 'existing-1',
+      role: 'INTERN',
+      email: corrected.email,
+      phone: corrected.phone,
+      intern_code: corrected.code,
+      department_id: 'department-1',
+      manager_id: 'manager-1',
+      current_manager_role: 'TL',
+      current_manager_department_id: 'department-1',
+      full_name: corrected.name,
+      college: 'Old College',
+      course: 'Old Course',
+      year_of_study: '2025',
+      location: 'Old Location',
+      internship_domain: 'MERN Stack',
+      position: 'MERN Stack',
+      joining_date: '2026-04-22',
+      completion_date: '2026-10-22',
+      internship_status: 'ACTIVE',
+      offer_letter_url: 'https://example.com/old',
+    },
+  ];
+  const { client, queries } = clientWith({ existingUsers });
+  dbTx.mockImplementation(async (work) => work(client));
+  const result = await execute(workbook, emails, options);
+  expect(result.summary.profileFieldsCorrected).toBeGreaterThanOrEqual(1);
+  expect(
+    queries.some(
+      (sql) => sql.includes('college=$') && sql.includes('position=$')
+    )
+  ).toBe(true);
+  expect(createAuditLog).toHaveBeenCalledWith(
+    expect.objectContaining({
+      action: 'WORKBOOK_MASTER_PROFILE_SYNCED',
+      details: expect.objectContaining({
+        correctedFields: expect.arrayContaining([
+          expect.objectContaining({
+            field: 'college',
+            newValue: 'Correct College',
+          }),
+          expect.objectContaining({ field: 'position', newValue: 'Intern' }),
+        ]),
+      }),
+    }),
+    client
+  );
+});
+test('does not erase existing values when Master values are blank', async () => {
+  const existingUsers = [
+    {
+      id: 'existing-1',
+      role: 'INTERN',
+      email: 'current@example.com',
+      phone: '9000000001',
+      intern_code: 'INT-001',
+      department_id: 'department-1',
+      manager_id: 'manager-1',
+      current_manager_role: 'TL',
+      current_manager_department_id: 'department-1',
+      full_name: 'Current Intern',
+      college: 'Keep College',
+    },
+  ];
+  const { client, queries } = clientWith({ existingUsers });
+  dbTx.mockImplementation(async (work) => work(client));
+  await execute(workbook, emails, options);
+  expect(queries.some((sql) => /college=/.test(sql))).toBe(false);
+});
+test('blocks authoritative profile replacement without exact email and mobile', async () => {
+  const changed = intern({ college: 'Correct College' });
+  parser.previewWorkbook.mockReturnValue({
+    importBlocked: false,
+    comparisonInterns: [changed],
+  });
+  service.applyEmailProfiles.mockReturnValue({ interns: [changed] });
+  const existingUsers = [
+    {
+      id: 'existing-1',
+      role: 'INTERN',
+      email: changed.email,
+      phone: null,
+      intern_code: changed.code,
+      department_id: 'department-1',
+      manager_id: 'manager-1',
+      current_manager_role: 'TL',
+      current_manager_department_id: 'department-1',
+      college: 'Old College',
+    },
+  ];
+  const { client } = clientWith({ existingUsers });
+  dbTx.mockImplementation(async (work) => work(client));
+  await expect(execute(workbook, emails, options)).rejects.toMatchObject({
+    code: 'PROFILE_VALUE_CONFLICT',
+  });
+});
+test('accepts an official profile joining date that differs from Attendance JOINED', async () => {
+  const leader = intern({
+    name: 'Manager',
+    code: 'MGR-1',
+    phone: '9000000099',
+    email: 'manager@example.com',
+    joinedDate: '2026-04-27',
+    profileJoiningDate: '2026-04-24',
+  });
+  parser.previewWorkbook.mockReturnValue({
+    importBlocked: false,
+    comparisonInterns: [leader],
+  });
+  service.applyEmailProfiles.mockReturnValue({ interns: [leader] });
+  const existingUsers = [
+    {
+      id: 'manager-1',
+      role: 'TL',
+      email: 'manager@example.com',
+      phone: '9000000099',
+      intern_code: 'MGR-1',
+      department_id: 'department-1',
+      manager_id: null,
+      joining_date: '2026-04-24',
+      internship_status: 'ACTIVE',
+    },
+  ];
+  const { client } = clientWith({ existingUsers });
+  dbTx.mockImplementation(async (work) => work(client));
+  await expect(execute(workbook, emails, options)).resolves.toMatchObject({
+    success: true,
+  });
+});
 test('enriches a blank existing leader phone without changing credentials', async () => {
   const leader = intern({
     name: 'Manager',

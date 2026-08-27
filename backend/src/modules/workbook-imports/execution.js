@@ -141,28 +141,35 @@ function resolveExistingAccounts(active, rows, department, manager) {
     if (phone) byPhone.set(phone, row);
     if (code) byCode.set(code, row);
   }
-
   return active.map((intern) => {
     const email = normalizedEmail(intern.email);
     const phone = normalizePhone(intern.phone);
     const code = normalizeCode(intern.code);
-    const matches = new Map();
-    for (const row of [
-      byEmail.get(email),
-      phone && byPhone.get(phone),
-      byCode.get(code),
-    ]) {
-      if (row) matches.set(row.id, row);
-    }
-    if (matches.size > 1) {
+    const emailMatch = email ? byEmail.get(email) || null : null;
+    const phoneMatch = phone ? byPhone.get(phone) || null : null;
+    const codeMatch = code ? byCode.get(code) || null : null;
+
+    if (emailMatch && phoneMatch && emailMatch.id !== phoneMatch.id) {
       throw Object.assign(
         new Error(
-          `Different existing accounts match identifiers for ${intern.name}`
+          `Email and mobile match different existing accounts for ${intern.name}`
         ),
-        { statusCode: 409 }
+        { statusCode: 409, code: 'IDENTITY_MATCH_CONFLICT' }
       );
     }
-    const existing = [...matches.values()][0] || null;
+
+    const identityMatch = emailMatch || phoneMatch || null;
+    if (identityMatch && codeMatch && identityMatch.id !== codeMatch.id) {
+      throw Object.assign(
+        new Error(
+          `${intern.name} corrected Intern Code is already assigned to another account`
+        ),
+        { statusCode: 409, code: 'INTERN_CODE_ALREADY_USED' }
+      );
+    }
+
+    const existing = identityMatch || codeMatch || null;
+    let internCodeCorrection = null;
     if (existing) {
       const reusableRoles = new Set(['INTERN', 'CAPTAIN', 'TL', 'SENIOR_TL']);
       if (!reusableRoles.has(existing.role)) {
@@ -187,17 +194,29 @@ function resolveExistingAccounts(active, rows, department, manager) {
       const conflicts = [];
       if (existing.department_id !== department.id)
         conflicts.push('project group');
-      if (existing.role === 'INTERN' && existing.manager_id !== manager.id)
-        conflicts.push('manager');
+      if (existing.role === 'INTERN' && existing.manager_id) {
+        const validManagerRoles = new Set(['CAPTAIN', 'TL', 'SENIOR_TL']);
+        if (
+          !validManagerRoles.has(existing.current_manager_role) ||
+          existing.current_manager_department_id !== department.id
+        ) {
+          conflicts.push('current manager hierarchy');
+        }
+      }
       if (normalizedEmail(existing.email) !== email) conflicts.push('email');
       if (existing.phone && phone && normalizePhone(existing.phone) !== phone)
         conflicts.push('phone');
-      if (
-        existing.intern_code &&
-        code &&
-        normalizeCode(existing.intern_code) !== code
-      )
-        conflicts.push('Intern Code');
+
+      const existingCode = normalizeCode(existing.intern_code);
+      if (existingCode && code && existingCode !== code) {
+        const exactEmailAndPhone =
+          emailMatch?.id === existing.id && phoneMatch?.id === existing.id;
+        if (exactEmailAndPhone) {
+          internCodeCorrection = { oldCode: existingCode, newCode: code };
+        } else {
+          conflicts.push('Intern Code');
+        }
+      }
       if (conflicts.length) {
         throw Object.assign(
           new Error(
@@ -207,10 +226,9 @@ function resolveExistingAccounts(active, rows, department, manager) {
         );
       }
     }
-    return { intern, email, phone, code, existing };
+    return { intern, email, phone, code, existing, internCodeCorrection };
   });
 }
-
 async function execute(workbookBuffer, emailBuffer, options) {
   const workbookFingerprint = hash(workbookBuffer);
   const emailWorkbookFingerprint = hash(emailBuffer);
@@ -225,8 +243,10 @@ async function execute(workbookBuffer, emailBuffer, options) {
   }
 
   report(options, 'PARSING_WORKBOOKS');
+  const asOfDate = options.asOfDate || new Date().toISOString().slice(0, 10);
   const parsed = previewWorkbook(workbookBuffer, {
     includeComparisonData: true,
+    asOfDate,
   });
   if (parsed.importBlocked) {
     throw Object.assign(
@@ -239,7 +259,18 @@ async function execute(workbookBuffer, emailBuffer, options) {
     parsed.comparisonInterns,
     profiles
   ).interns;
-  const active = interns.filter((intern) => currentStatus(intern) === 'ACTIVE');
+  const activeCandidates = interns.filter(
+    (intern) => currentStatus(intern) === 'ACTIVE'
+  );
+  const incompleteIdentitySkipped = activeCandidates.filter(
+    (intern) =>
+      !intern.email &&
+      !normalizePhone(intern.phone) &&
+      !normalizeCode(intern.code)
+  );
+  const active = activeCandidates.filter(
+    (intern) => !incompleteIdentitySkipped.includes(intern)
+  );
   const unsafeActive = active.filter(
     (intern) =>
       !intern.email || !intern.code || intern.emailMatch === 'IDENTITY_CONFLICT'
@@ -258,13 +289,13 @@ async function execute(workbookBuffer, emailBuffer, options) {
     report(options, 'VALIDATING_SCOPE');
     const department = (
       await client.query(
-        'SELECT id FROM departments WHERE id=$1 AND deleted_at IS NULL',
+        'SELECT id,name FROM departments WHERE id=$1 AND deleted_at IS NULL',
         [options.departmentId]
       )
     ).rows[0];
     const manager = (
       await client.query(
-        "SELECT id,role,email,phone,intern_code,department_id,manager_id FROM users WHERE id=$1 AND role IN ('TL','SENIOR_TL') AND deleted_at IS NULL",
+        "SELECT id,role,email,phone,intern_code,department_id,manager_id FROM users WHERE id=$1 AND role IN ('CAPTAIN','TL','SENIOR_TL') AND deleted_at IS NULL",
         [options.managerId]
       )
     ).rows[0];
@@ -272,6 +303,25 @@ async function execute(workbookBuffer, emailBuffer, options) {
       throw Object.assign(new Error('Invalid project group or manager'), {
         statusCode: 400,
       });
+    }
+    const normalizedDepartment = (value) =>
+      String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, ' ');
+    const wrongDepartment = active.find(
+      (intern) =>
+        intern.department &&
+        normalizedDepartment(intern.department) !==
+          normalizedDepartment(department.name)
+    );
+    if (wrongDepartment) {
+      throw Object.assign(
+        new Error(
+          `${wrongDepartment.name} belongs to ${wrongDepartment.department} in Active Interns Master, not ${department.name}`
+        ),
+        { statusCode: 409, code: 'MASTER_DEPARTMENT_MISMATCH' }
+      );
     }
     if (
       options.requesterRole === 'SENIOR_TL' &&
@@ -305,8 +355,8 @@ async function execute(workbookBuffer, emailBuffer, options) {
       )
     ).rows[0];
     if (priorBatch?.status === 'COMPLETED') {
-      throw Object.assign(new Error('This exact import already completed'), {
-        statusCode: 409,
+      report(options, 'REIMPORTING_COMPLETED_WORKBOOK', {
+        priorBatchId: priorBatch.id,
       });
     }
     if (priorBatch?.status === 'RUNNING') {
@@ -315,21 +365,26 @@ async function execute(workbookBuffer, emailBuffer, options) {
       });
     }
 
-    const batch = (
-      await client.query(
-        'INSERT INTO workbook_import_batches(workbook_fingerprint,email_workbook_fingerprint,department_id,manager_id,requested_by) VALUES($1,$2,$3,$4,$5) RETURNING id',
-        [
-          workbookFingerprint,
-          emailWorkbookFingerprint,
-          department.id,
-          manager.id,
-          options.requesterId,
-        ]
-      )
-    ).rows[0];
+    const batch =
+      priorBatch?.status === 'COMPLETED'
+        ? priorBatch
+        : (
+            await client.query(
+              'INSERT INTO workbook_import_batches(workbook_fingerprint,email_workbook_fingerprint,department_id,manager_id,requested_by) VALUES($1,$2,$3,$4,$5) RETURNING id',
+              [
+                workbookFingerprint,
+                emailWorkbookFingerprint,
+                department.id,
+                manager.id,
+                options.requesterId,
+              ]
+            )
+          ).rows[0];
     const summary = {
       activeInterns: active.length,
-      nonActiveExcluded: interns.length - active.length,
+      incompleteIdentitySkipped: incompleteIdentitySkipped.length,
+      nonActiveExcluded:
+        interns.length - active.length - incompleteIdentitySkipped.length,
       accountsCreated: 0,
       existingAccounts: 0,
       existingInternAccountsReused: 0,
@@ -337,6 +392,11 @@ async function execute(workbookBuffer, emailBuffer, options) {
       peopleReceivingAttendance: 0,
       attendanceCreated: 0,
       attendanceUnchanged: 0,
+      internCodesCorrected: 0,
+      ratingsCreated: 0,
+      ratingsUnchanged: 0,
+      ratingsFilled: 0,
+      ratingsConflicting: 0,
     };
 
     report(options, 'CHECKING_EXISTING_ACCOUNTS', { count: active.length });
@@ -353,7 +413,19 @@ async function execute(workbookBuffer, emailBuffer, options) {
     ];
     const existingRows = (
       await client.query(
-        'SELECT id,role,email,phone,intern_code,department_id,manager_id,password_hash,must_change_password,suspended FROM users WHERE deleted_at IS NULL AND (LOWER(email)=ANY($1::text[]) OR phone=ANY($2::text[]) OR UPPER(intern_code)=ANY($3::text[])) FOR UPDATE',
+        `SELECT u.id,u.role,u.email,u.phone,u.intern_code,u.department_id,u.manager_id,
+                u.password_hash,u.must_change_password,u.suspended,u.full_name,u.college,
+                u.course,u.year_of_study,u.location,u.internship_domain,u.position,
+                u.joining_date::text,u.completion_date::text,u.internship_status,
+                u.offer_letter_url,current_manager.role AS current_manager_role,
+                current_manager.department_id AS current_manager_department_id
+         FROM users u
+         LEFT JOIN users current_manager
+           ON current_manager.id=u.manager_id AND current_manager.deleted_at IS NULL
+         WHERE u.deleted_at IS NULL
+           AND (LOWER(u.email)=ANY($1::text[]) OR u.phone=ANY($2::text[])
+             OR UPPER(u.intern_code)=ANY($3::text[]))
+         FOR UPDATE OF u`,
         [emails, phones, codes]
       )
     ).rows;
@@ -371,6 +443,155 @@ async function execute(workbookBuffer, emailBuffer, options) {
       ['CAPTAIN', 'TL', 'SENIOR_TL'].includes(plan.existing?.role)
     ).length;
     summary.peopleReceivingAttendance = plans.length;
+    for (const plan of plans.filter((item) => item.internCodeCorrection)) {
+      const owner = await client.query(
+        'SELECT id FROM users WHERE UPPER(intern_code)=$1 AND deleted_at IS NULL AND id<>$2 LIMIT 1 FOR UPDATE',
+        [plan.internCodeCorrection.newCode, plan.existing.id]
+      );
+      if (owner.rowCount > 0) {
+        throw Object.assign(
+          new Error(
+            `${plan.intern.name} corrected Intern Code is already assigned to another account`
+          ),
+          { statusCode: 409, code: 'INTERN_CODE_ALREADY_USED' }
+        );
+      }
+      await client.query(
+        'UPDATE users SET intern_code=$1,updated_at=NOW() WHERE id=$2 AND deleted_at IS NULL',
+        [plan.internCodeCorrection.newCode, plan.existing.id]
+      );
+      await createAuditLog(
+        {
+          userId: options.requesterId,
+          action: 'WORKBOOK_INTERN_CODE_CORRECTED',
+          resourceType: 'user',
+          resourceId: plan.existing.id,
+          details: {
+            source: 'Active Interns Master',
+            oldCode: plan.internCodeCorrection.oldCode,
+            newCode: plan.internCodeCorrection.newCode,
+          },
+        },
+        client
+      );
+      plan.existing.intern_code = plan.internCodeCorrection.newCode;
+      summary.internCodesCorrected++;
+    }
+    summary.profilePhonesEnriched = 0;
+    summary.profileFieldsEnriched = 0;
+    summary.profileFieldsCorrected = 0;
+    summary.profileValuesAlreadyCorrect = 0;
+
+    const normalizedComparable = (value) =>
+      String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, ' ');
+    const profileValue = (plan, field) => {
+      const intern = plan.intern;
+      if (field === 'intern_code') return plan.code;
+      if (field === 'full_name') return intern.name || null;
+      if (field === 'college') return intern.college || null;
+      if (field === 'course') return intern.course || null;
+      if (field === 'year_of_study') return intern.yearOfStudy || null;
+      if (field === 'location') return intern.location || null;
+      if (field === 'internship_domain') return intern.domain || null;
+      if (field === 'position') return intern.position || intern.domain || null;
+      if (field === 'joining_date')
+        return intern.profileJoiningDate || intern.joinedDate || null;
+      if (field === 'completion_date')
+        return intern.completionDate || intern.profileEndingDate || null;
+      if (field === 'internship_status') return currentStatus(intern) || null;
+      if (field === 'offer_letter_url') return intern.offerLetterUrl || null;
+      return null;
+    };
+    const profileFields = [
+      'intern_code',
+      'full_name',
+      'college',
+      'course',
+      'year_of_study',
+      'location',
+      'internship_domain',
+      'position',
+      'joining_date',
+      'completion_date',
+      'internship_status',
+      'offer_letter_url',
+    ];
+
+    const masterAuthoritativeFields = new Set([
+      'full_name',
+      'college',
+      'course',
+      'year_of_study',
+      'location',
+      'internship_domain',
+      'position',
+      'joining_date',
+      'completion_date',
+      'offer_letter_url',
+    ]);
+    for (const plan of plans.filter((item) => item.existing)) {
+      const sets = [];
+      const params = [];
+      const enriched = [];
+      const corrected = [];
+      const exactEmailAndPhone =
+        normalizedEmail(plan.existing.email) === plan.email &&
+        normalizePhone(plan.existing.phone) === plan.phone;
+      for (const field of profileFields) {
+        const incoming = profileValue(plan, field);
+        if (!incoming) continue;
+        const current = plan.existing[field];
+        if (current == null || String(current).trim() === '') {
+          params.push(incoming);
+          sets.push(`${field}=$${params.length}`);
+          enriched.push(field);
+        } else if (
+          normalizedComparable(current) === normalizedComparable(incoming)
+        ) {
+          summary.profileValuesAlreadyCorrect++;
+        } else if (masterAuthoritativeFields.has(field) && exactEmailAndPhone) {
+          params.push(incoming);
+          sets.push(`${field}=$${params.length}`);
+          corrected.push({ field, oldValue: current, newValue: incoming });
+        } else if (field !== 'internship_status') {
+          throw Object.assign(
+            new Error(
+              `${plan.intern.name} ${field} conflicts with the reviewed import`
+            ),
+            { statusCode: 409, code: 'PROFILE_VALUE_CONFLICT', field }
+          );
+        }
+      }
+      if (sets.length) {
+        params.push(plan.existing.id);
+        await client.query(
+          `UPDATE users SET ${sets.join(',')},updated_at=NOW() WHERE id=$${params.length} AND deleted_at IS NULL`,
+          params
+        );
+        summary.profileFieldsEnriched += enriched.length;
+        summary.profileFieldsCorrected += corrected.length;
+        await createAuditLog(
+          {
+            userId: options.requesterId,
+            action: corrected.length
+              ? 'WORKBOOK_MASTER_PROFILE_SYNCED'
+              : 'WORKBOOK_PROFILE_ENRICHED',
+            resourceType: 'user',
+            resourceId: plan.existing.id,
+            details: {
+              source: 'Active Interns Master',
+              enrichedFields: enriched,
+              correctedFields: corrected,
+            },
+          },
+          client
+        );
+      }
+    }
+
     summary.profilePhonesEnriched = 0;
     for (const plan of plans.filter(
       (item) =>
@@ -416,10 +637,10 @@ async function execute(workbookBuffer, emailBuffer, options) {
 
     if (hashedPlans.length) {
       report(options, 'CREATING_ACCOUNTS', { count: hashedPlans.length });
-      const columns = 9;
-      const sql = `INSERT INTO users(email,password_hash,role,manager_id,department_id,full_name,phone,joining_date,internship_status,intern_code,must_change_password,email_verified)
-        SELECT v.email,v.password_hash,'INTERN',v.manager_id::uuid,v.department_id::uuid,v.full_name,v.phone,v.joining_date::date,'ACTIVE',v.intern_code,TRUE,TRUE
-        FROM (VALUES ${valuesSql(hashedPlans, Array(columns).fill(null))}) AS v(email,password_hash,manager_id,department_id,full_name,phone,joining_date,intern_code,plan_index)
+      const columns = 17;
+      const sql = `INSERT INTO users(email,password_hash,role,manager_id,department_id,full_name,phone,joining_date,completion_date,internship_status,intern_code,college,course,year_of_study,location,internship_domain,position,offer_letter_url,must_change_password,email_verified)
+        SELECT v.email,v.password_hash,'INTERN',v.manager_id::uuid,v.department_id::uuid,v.full_name,v.phone,v.joining_date::date,v.completion_date::date,'ACTIVE',v.intern_code,v.college,v.course,v.year_of_study,v.location,v.internship_domain,v.position,v.offer_letter_url,TRUE,TRUE
+        FROM (VALUES ${valuesSql(hashedPlans, Array(columns).fill(null))}) AS v(email,password_hash,manager_id,department_id,full_name,phone,joining_date,completion_date,intern_code,college,course,year_of_study,location,internship_domain,position,offer_letter_url,plan_index)
         RETURNING id,intern_code`;
       const params = flatten(
         hashedPlans.map((plan, index) => [
@@ -429,8 +650,16 @@ async function execute(workbookBuffer, emailBuffer, options) {
           department.id,
           plan.intern.name,
           plan.phone,
-          plan.intern.joinedDate || null,
+          plan.intern.profileJoiningDate || plan.intern.joinedDate || null,
+          plan.intern.completionDate || plan.intern.profileEndingDate || null,
           plan.code,
+          plan.intern.college || null,
+          plan.intern.course || null,
+          plan.intern.yearOfStudy || null,
+          plan.intern.location || null,
+          plan.intern.domain || null,
+          plan.intern.position || plan.intern.domain || null,
+          plan.intern.offerLetterUrl || null,
           index,
         ])
       );
@@ -521,6 +750,107 @@ async function execute(workbookBuffer, emailBuffer, options) {
       summary.attendanceCreated = toInsert.length;
     }
 
+    const parsedRatingRows = plans.flatMap((plan) =>
+      (plan.intern.ratings || []).map((rating) => ({
+        ...rating,
+        userId: plan.userId,
+        name: plan.intern.name,
+      }))
+    );
+    const ratingRowsBySource = new Map();
+    for (const row of parsedRatingRows) {
+      const current = ratingRowsBySource.get(row.sourceKey);
+      if (!current) {
+        ratingRowsBySource.set(row.sourceKey, row);
+        continue;
+      }
+      ratingRowsBySource.set(row.sourceKey, {
+        ...current,
+        score: current.score ?? row.score ?? null,
+        remarks: current.remarks || row.remarks || null,
+      });
+    }
+    const ratingRows = [...ratingRowsBySource.values()];
+    if (ratingRows.length) {
+      report(options, 'CHECKING_EXISTING_RATINGS', {
+        count: ratingRows.length,
+      });
+      const existingRatings = (
+        await client.query(
+          `SELECT rated_user_id,score::text,remarks,source_key
+           FROM ratings
+           WHERE source_key=ANY($1::text[]) AND deleted_at IS NULL
+           FOR UPDATE`,
+          [[...new Set(ratingRows.map((row) => row.sourceKey))]]
+        )
+      ).rows;
+      const existingBySource = new Map(
+        existingRatings.map((row) => [row.source_key, row])
+      );
+      const ratingsToInsert = [];
+      const ratingsToFill = [];
+      for (const row of ratingRows) {
+        const old = existingBySource.get(row.sourceKey);
+        if (!old) {
+          ratingsToInsert.push(row);
+          continue;
+        }
+        const oldScoreEmpty =
+          old.score == null || String(old.score).trim() === '';
+        const oldRemarksEmpty = String(old.remarks || '').trim() === '';
+        const scoreToFill =
+          oldScoreEmpty && row.score != null ? row.score : null;
+        const remarksToFill =
+          oldRemarksEmpty && String(row.remarks || '').trim()
+            ? row.remarks
+            : null;
+        if (scoreToFill != null || remarksToFill != null) {
+          ratingsToFill.push({
+            sourceKey: row.sourceKey,
+            score: scoreToFill,
+            remarks: remarksToFill,
+          });
+        } else {
+          summary.ratingsUnchanged++;
+        }
+      }
+      for (const row of ratingsToFill) {
+        await client.query(
+          `UPDATE ratings
+           SET score=CASE WHEN score IS NULL THEN $1::numeric ELSE score END,
+               remarks=CASE
+                 WHEN COALESCE(BTRIM(remarks),'')='' THEN $2
+                 ELSE remarks
+               END
+           WHERE source_key=$3 AND deleted_at IS NULL`,
+          [row.score, row.remarks, row.sourceKey]
+        );
+      }
+      summary.ratingsFilled = ratingsToFill.length;
+      if (ratingsToInsert.length) {
+        const columns = 10;
+        await client.query(
+          `INSERT INTO ratings(rated_user_id,rated_by,score,remarks,created_at,rating_period_start,rating_period_end,source_sheet,source_row,source_key)
+           SELECT v.rated_user_id::uuid,v.rated_by::uuid,v.score::numeric,v.remarks,v.created_at::timestamptz,v.period_start::date,v.period_end::date,v.source_sheet,v.source_row::integer,v.source_key
+           FROM (VALUES ${valuesSql(ratingsToInsert, Array(columns).fill(null))}) AS v(rated_user_id,rated_by,score,remarks,created_at,period_start,period_end,source_sheet,source_row,source_key)`,
+          flatten(
+            ratingsToInsert.map((row) => [
+              row.userId,
+              options.requesterId,
+              row.score,
+              row.remarks,
+              `${row.ratingDate}T12:00:00Z`,
+              row.startDate,
+              row.endDate,
+              row.sourceSheet,
+              row.sourceRow,
+              row.sourceKey,
+            ])
+          )
+        );
+        summary.ratingsCreated = ratingsToInsert.length;
+      }
+    }
     await client.query(
       "UPDATE workbook_import_batches SET status='COMPLETED',summary=$1,completed_at=NOW() WHERE id=$2",
       [summary, batch.id]

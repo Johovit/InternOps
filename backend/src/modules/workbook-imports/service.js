@@ -111,14 +111,16 @@ function profileDifferences(intern, user) {
       neon: neonPhone,
     });
   }
+  const officialJoiningDate =
+    intern.profileJoiningDate || intern.joinedDate || null;
   if (
-    intern.joinedDate &&
+    officialJoiningDate &&
     user.joining_date &&
-    intern.joinedDate !== user.joining_date
+    officialJoiningDate !== user.joining_date
   ) {
     differences.push({
       field: 'joiningDate',
-      workbook: intern.joinedDate,
+      workbook: officialJoiningDate,
       neon: user.joining_date,
     });
   }
@@ -263,10 +265,51 @@ function groupedIndex(rows, keyFor) {
   }
   return index;
 }
-function prioritizedMatches(matches) {
-  const primary = matches.filter((profile) => profile.sourcePriority === 1);
-  if (primary.length) return primary;
-  return matches.filter((profile) => profile.sourcePriority === 2);
+function sourceMatches(matches, priority) {
+  return matches.filter((profile) => profile.sourcePriority === priority);
+}
+function bestAvailableSourceMatches(matches) {
+  for (const priority of [0, 1, 2, 3]) {
+    const candidates = sourceMatches(matches, priority);
+    if (candidates.length) return candidates;
+  }
+  return [];
+}
+function uniqueSupplement(primary, allMatches, priority) {
+  const candidates = [...new Set(sourceMatches(allMatches, priority))];
+  if (!candidates.length) return { supplement: null, ambiguous: false };
+  const primaryCode = normalizeCode(primary?.code);
+  const primaryEmail = String(primary?.email || '')
+    .trim()
+    .toLowerCase();
+  const primaryPhone = normalizePhone(primary?.phone);
+  const compatible = candidates.filter((profile) => {
+    const profileCode = normalizeCode(profile.code);
+    const profileEmail = String(profile.email || '')
+      .trim()
+      .toLowerCase();
+    const profilePhone = normalizePhone(profile.phone);
+    const codeAgrees =
+      !primaryCode || !profileCode || primaryCode === profileCode;
+    const emailAgrees =
+      !primaryEmail || !profileEmail || primaryEmail === profileEmail;
+    const phoneAgrees =
+      !primaryPhone || !profilePhone || primaryPhone === profilePhone;
+    const evidence =
+      (primaryCode && profileCode && primaryCode === profileCode) ||
+      (primaryEmail && profileEmail && primaryEmail === profileEmail) ||
+      (primaryPhone && profilePhone && primaryPhone === profilePhone);
+    return codeAgrees && emailAgrees && phoneAgrees && evidence;
+  });
+  return compatible.length === 1
+    ? { supplement: compatible[0], ambiguous: false }
+    : { supplement: null, ambiguous: compatible.length > 1 };
+}
+function firstValue(profiles, field, fallback = null) {
+  for (const profile of profiles) {
+    if (profile?.[field]) return profile[field];
+  }
+  return fallback;
 }
 function applyEmailProfiles(interns, profiles) {
   const byPhone = groupedIndex(profiles, (profile) =>
@@ -274,6 +317,11 @@ function applyEmailProfiles(interns, profiles) {
   );
   const byCode = groupedIndex(profiles, (profile) =>
     normalizeCode(profile.code)
+  );
+  const byEmail = groupedIndex(profiles, (profile) =>
+    String(profile.email || '')
+      .trim()
+      .toLowerCase()
   );
   const counts = {
     emailProfileRows: profiles.length,
@@ -283,31 +331,37 @@ function applyEmailProfiles(interns, profiles) {
     emailIdentityConflicts: 0,
     emailInvalidOrMissing: 0,
     emailMatchedFromInternDetails: 0,
+    emailMatchedFromInterns: 0,
+    emailProfilesSupplemented: 0,
+    emailInternsProfilesSupplemented: 0,
+    emailSupplementAmbiguous: 0,
   };
   const enriched = interns.map((intern) => {
     if (currentWorkbookStatus(intern) !== 'ACTIVE') return { ...intern };
-    const phoneMatches = intern.phone
-      ? prioritizedMatches(byPhone.get(normalizePhone(intern.phone)) || [])
+    const allPhoneMatches = intern.phone
+      ? byPhone.get(normalizePhone(intern.phone)) || []
       : [];
-    const codeMatches = intern.code
-      ? prioritizedMatches(byCode.get(normalizeCode(intern.code)) || [])
+    const allCodeMatches = intern.code
+      ? byCode.get(normalizeCode(intern.code)) || []
       : [];
+    const primaryPhoneMatches = bestAvailableSourceMatches(allPhoneMatches);
+    const primaryCodeMatches = bestAvailableSourceMatches(allCodeMatches);
     let match = null;
     let matchedBy = null;
-    if (phoneMatches.length === 1) {
-      match = phoneMatches[0];
+    if (primaryPhoneMatches.length === 1) {
+      match = primaryPhoneMatches[0];
       matchedBy = 'PHONE';
-      if (codeMatches.length === 1 && codeMatches[0] !== match) {
+      if (primaryCodeMatches.length === 1 && primaryCodeMatches[0] !== match) {
         counts.emailIdentityConflicts += 1;
         return { ...intern, email: null, emailMatch: 'IDENTITY_CONFLICT' };
       }
-    } else if (phoneMatches.length > 1) {
+    } else if (primaryPhoneMatches.length > 1) {
       counts.emailIdentityConflicts += 1;
       return { ...intern, email: null, emailMatch: 'IDENTITY_CONFLICT' };
-    } else if (codeMatches.length === 1) {
-      match = codeMatches[0];
+    } else if (primaryCodeMatches.length === 1) {
+      match = primaryCodeMatches[0];
       matchedBy = 'INTERN_CODE';
-    } else if (codeMatches.length > 1) {
+    } else if (primaryCodeMatches.length > 1) {
       counts.emailIdentityConflicts += 1;
       return { ...intern, email: null, emailMatch: 'IDENTITY_CONFLICT' };
     }
@@ -322,17 +376,61 @@ function applyEmailProfiles(interns, profiles) {
     if (matchedBy === 'PHONE') counts.emailMatchedByPhone += 1;
     else counts.emailMatchedByCode += 1;
     if (match.sourcePriority === 2) counts.emailMatchedFromInternDetails += 1;
+    if (match.sourcePriority === 3) counts.emailMatchedFromInterns += 1;
+    const codeMatches =
+      byCode.get(normalizeCode(match.code || intern.code)) || [];
+    const emailMatches =
+      byEmail.get(String(match.email).trim().toLowerCase()) || [];
+    const identityMatches = [
+      ...new Set([...allPhoneMatches, ...codeMatches, ...emailMatches]),
+    ];
+    const supplements = [];
+    for (const priority of [1, 2, 3]) {
+      if (priority <= match.sourcePriority) continue;
+      const result = uniqueSupplement(match, identityMatches, priority);
+      if (result.ambiguous) counts.emailSupplementAmbiguous += 1;
+      if (result.supplement) {
+        supplements.push(result.supplement);
+        if (priority === 2) counts.emailProfilesSupplemented += 1;
+        if (priority === 3) counts.emailInternsProfilesSupplemented += 1;
+      }
+    }
+    const sources = [match, ...supplements];
     return {
       ...intern,
+      name: firstValue(sources, 'name', intern.name || null),
       email: match.email,
       emailMatch: matchedBy,
+      college: firstValue(sources, 'college', intern.college || null),
+      course: firstValue(sources, 'course', intern.course || null),
+      domain: firstValue(sources, 'domain', intern.domain || null),
+      department: firstValue(sources, 'department', intern.department || null),
+      location: firstValue(sources, 'location', intern.location || null),
+      yearOfStudy: firstValue(
+        sources,
+        'yearOfStudy',
+        intern.yearOfStudy || null
+      ),
+      position: firstValue(sources, 'position', intern.position || null),
+      offerLetterUrl: firstValue(
+        sources,
+        'offerLetterUrl',
+        intern.offerLetterUrl || null
+      ),
+      profileJoiningDate: firstValue(sources, 'joiningDate'),
+      profileEndingDate: firstValue(sources, 'endingDate'),
       emailProfileSource: match.sourceSheet,
       emailProfileRow: match.sourceRow,
+      emailProfileSupplementSource: supplements[0]?.sourceSheet || null,
+      emailProfileSupplementRow: supplements[0]?.sourceRow || null,
+      emailProfileSources: sources.map((profile) => ({
+        sheet: profile.sourceSheet,
+        row: profile.sourceRow,
+      })),
     };
   });
   return { interns: enriched, counts };
 }
-
 function maskPhone(phone) {
   const normalized = normalizePhone(phone);
   return normalized ? `******${normalized.slice(-4)}` : 'Not available';
@@ -384,7 +482,9 @@ function buildActiveAccountPlan(interns, context, options) {
     accountPlanMissingEmail: 0,
     accountPlanInvalidGmail: 0,
     accountPlanMissingInternCode: 0,
+    accountPlanIncompleteIdentitySkipped: 0,
     accountPlanExistingUser: 0,
+    accountPlanInternCodesToCorrect: 0,
     accountPlanManualReview: 0,
     accountPlanStatusVerification: 0,
     accountPlanAttendanceExcluded: interns.reduce(
@@ -432,6 +532,18 @@ function buildActiveAccountPlan(interns, context, options) {
     }
 
     counts.accountPlanActive += 1;
+    const missingEmail = !intern.email;
+    const missingPhone = !normalizePhone(intern.phone);
+    const missingCode = !normalizeCode(intern.code);
+    if (missingEmail && missingPhone && missingCode) {
+      counts.accountPlanIncompleteIdentitySkipped += 1;
+      record.decision = 'SKIPPED_INCOMPLETE_IDENTITY';
+      record.reasons.push(
+        'Skipped because email, mobile number, and Intern Code are all missing'
+      );
+      records.push(record);
+      continue;
+    }
     if (!intern.email) {
       counts.accountPlanMissingEmail += 1;
       record.reasons.push('Email is missing or invalid');
@@ -458,9 +570,11 @@ function buildActiveAccountPlan(interns, context, options) {
       );
     }
 
-    const existing =
-      (intern.email && existingByEmail.get(intern.email.toLowerCase())) ||
-      (intern.phone && existingByPhone.get(normalizePhone(intern.phone)));
+    const existingEmailMatch =
+      intern.email && existingByEmail.get(intern.email.toLowerCase());
+    const existingPhoneMatch =
+      intern.phone && existingByPhone.get(normalizePhone(intern.phone));
+    const existing = existingEmailMatch || existingPhoneMatch;
     if (existing) {
       counts.accountPlanExistingUser += 1;
       record.decision = 'EXISTING_USER';
@@ -468,6 +582,18 @@ function buildActiveAccountPlan(interns, context, options) {
       record.reasons.push(
         'An existing Neon intern matches this email or phone'
       );
+      if (
+        existingEmailMatch?.id === existing.id &&
+        existingPhoneMatch?.id === existing.id &&
+        normalizeCode(existing.intern_code) &&
+        normalizeCode(intern.code) &&
+        normalizeCode(existing.intern_code) !== normalizeCode(intern.code)
+      ) {
+        counts.accountPlanInternCodesToCorrect += 1;
+        record.reasons.push(
+          'Intern Code will be corrected from Active Interns Master'
+        );
+      }
     } else if (record.reasons.length) {
       counts.accountPlanManualReview += 1;
       record.decision = 'MANUAL_REVIEW';
@@ -513,8 +639,10 @@ function buildActiveAccountPlan(interns, context, options) {
 }
 
 async function preview(buffer, options = {}, emailDetailsBuffer = null) {
+  const asOfDate = options.asOfDate || new Date().toISOString().slice(0, 10);
   const parsedPreview = previewWorkbook(buffer, {
     includeComparisonData: true,
+    asOfDate,
   });
   const { comparisonInterns, ...workbookPreview } = parsedPreview;
   const existingInterns = await repository.getExistingInterns();
@@ -564,13 +692,21 @@ async function preview(buffer, options = {}, emailDetailsBuffer = null) {
       plannedInterns = matching.interns;
       emailMatching = {
         sheet: emailDetails.sheet,
+        masterSheet: emailDetails.masterSheet,
+        fullDetailsSheet: emailDetails.fullDetailsSheet,
+        masterRows: emailDetails.masterRows,
         fallbackSheet: emailDetails.fallbackSheet,
+        internsSheet: emailDetails.internsSheet,
         primaryRows: emailDetails.primaryRows,
         fallbackRows: emailDetails.fallbackRows,
+        internsRows: emailDetails.internsRows,
         ...matching.counts,
       };
     }
-    accountPlan = buildActiveAccountPlan(plannedInterns, context, options);
+    accountPlan = buildActiveAccountPlan(plannedInterns, context, {
+      ...options,
+      asOfDate,
+    });
     const managerIdentity = {
       id: context.manager.id,
       email: String(context.manager.email || '')
@@ -596,13 +732,17 @@ async function preview(buffer, options = {}, emailDetailsBuffer = null) {
       0,
       accountPlan.counts.accountPlanEligible - managerWorkbookRecords.length
     );
-    accountPlan.counts.accountPlanPeopleReceivingAttendance =
-      plannedInterns.filter(
-        (intern) => currentWorkbookStatus(intern) === 'ACTIVE'
-      ).length;
     const activeInterns = plannedInterns.filter(
-      (intern) => currentWorkbookStatus(intern) === 'ACTIVE'
+      (intern) =>
+        currentWorkbookStatus(intern) === 'ACTIVE' &&
+        Boolean(
+          intern.email ||
+          normalizePhone(intern.phone) ||
+          normalizeCode(intern.code)
+        )
     );
+    accountPlan.counts.accountPlanPeopleReceivingAttendance =
+      activeInterns.length;
     accountPlan.counts.accountPlanAttendanceToImport = activeInterns.reduce(
       (sum, intern) => sum + intern.attendance.length,
       0

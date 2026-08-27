@@ -268,6 +268,7 @@ async function routes(fastify) {
           departmentId: parsedParams.data.deptId,
           requesterId: req.user.id,
           isAdmin: req.user.role === 'ADMIN',
+          requesterRole: req.user.role,
           from: parsedQuery.data.from,
           to: parsedQuery.data.to,
         });
@@ -380,7 +381,11 @@ async function routes(fastify) {
           );
           return all.rows;
         }
-        return await repo.getAuthorizedSubordinates(req.user.id);
+        return await repo.getAuthorizedSubordinates(
+          req.user.id,
+          req.user.role,
+          req.user.department_id
+        );
       } catch (err) {
         req.log.error(err, 'Error in GET /attendance/authorized-members');
         return reply.status(500).send({ error: 'Internal server error' });

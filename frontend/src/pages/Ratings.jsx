@@ -61,9 +61,18 @@ export default function Ratings({
   const [viewDepartmentId, setViewDepartmentId] = useState(deptId || '');
   const [viewAll, setViewAll] = useState(false);
   const today = new Date().toISOString().slice(0, 10);
-  const yearStart = `${today.slice(0, 4)}-01-01`;
-  const [sheetFrom, setSheetFrom] = useState(yearStart);
-  const [sheetTo, setSheetTo] = useState(today);
+  const [selectedMonth, setSelectedMonth] = useState(today.slice(0, 7));
+  const [selectedYear, selectedMonthNumber] = selectedMonth
+    .split('-')
+    .map(Number);
+  const sheetFrom = `${selectedMonth}-01`;
+  const selectedMonthEnd = new Date(
+    Date.UTC(selectedYear, selectedMonthNumber, 0)
+  )
+    .toISOString()
+    .slice(0, 10);
+  const sheetTo =
+    selectedMonth === today.slice(0, 7) ? today : selectedMonthEnd;
   const [viewUserId, setViewUserId] = useState(() => {
     if (isProjectView && roster.length > 0) {
       return roster[0].id;
@@ -382,10 +391,8 @@ export default function Ratings({
               <DepartmentRatingsSheet
                 departmentName={activeDepartment?.name}
                 data={sheetData}
-                from={sheetFrom}
-                to={sheetTo}
-                onFromChange={setSheetFrom}
-                onToChange={setSheetTo}
+                selectedMonth={selectedMonth}
+                onMonthChange={setSelectedMonth}
                 isLoading={sheetIsLoading}
                 error={sheetError}
                 onRetry={refetchSheet}
@@ -570,10 +577,8 @@ export default function Ratings({
               <DepartmentRatingsSheet
                 departmentName={activeDepartment?.name}
                 data={sheetData}
-                from={sheetFrom}
-                to={sheetTo}
-                onFromChange={setSheetFrom}
-                onToChange={setSheetTo}
+                selectedMonth={selectedMonth}
+                onMonthChange={setSelectedMonth}
                 isLoading={sheetIsLoading}
                 error={sheetError}
                 onRetry={refetchSheet}

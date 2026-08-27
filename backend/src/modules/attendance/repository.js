@@ -90,29 +90,33 @@ async function getDepartmentAttendanceSheet({
   departmentId,
   requesterId,
   isAdmin,
+  requesterRole,
   from,
   to,
 }) {
-  const memberScope = isAdmin
-    ? `SELECT id, full_name, email, role, department_id, joining_date::text, internship_status, lifecycle_effective_date::text, completion_date::text, extended_completion_date::text
+  const departmentWide = isAdmin || requesterRole === 'SENIOR_TL';
+  const memberScope = departmentWide
+    ? `SELECT id, full_name, email, intern_code, role, department_id, joining_date::text, internship_status, lifecycle_effective_date::text, completion_date::text, extended_completion_date::text
        FROM users
-       WHERE department_id = $1 AND deleted_at IS NULL`
+       WHERE department_id = $1 AND deleted_at IS NULL AND role <> 'ADMIN'`
     : `WITH RECURSIVE visible_users AS (
-         SELECT id, full_name, email, role, department_id, manager_id, joining_date, internship_status, lifecycle_effective_date, completion_date, extended_completion_date, 0 AS depth
+         SELECT id, full_name, email, intern_code, role, department_id, manager_id, joining_date, internship_status, lifecycle_effective_date, completion_date, extended_completion_date, 0 AS depth
          FROM users
          WHERE id = $2 AND deleted_at IS NULL
          UNION ALL
-         SELECT u.id, u.full_name, u.email, u.role, u.department_id, u.manager_id, u.joining_date, u.internship_status, u.lifecycle_effective_date, u.completion_date, u.extended_completion_date,
+         SELECT u.id, u.full_name, u.email, u.intern_code, u.role, u.department_id, u.manager_id, u.joining_date, u.internship_status, u.lifecycle_effective_date, u.completion_date, u.extended_completion_date,
                 visible_users.depth + 1
          FROM users u
          INNER JOIN visible_users ON u.manager_id = visible_users.id
          WHERE u.deleted_at IS NULL AND visible_users.depth < 100
        )
-       SELECT id, full_name, email, role, department_id, joining_date::text, internship_status, lifecycle_effective_date::text, completion_date::text, extended_completion_date::text
+       SELECT id, full_name, email, intern_code, role, department_id, joining_date::text, internship_status, lifecycle_effective_date::text, completion_date::text, extended_completion_date::text
        FROM visible_users
        WHERE department_id = $1`;
 
-  const memberParams = isAdmin ? [departmentId] : [departmentId, requesterId];
+  const memberParams = departmentWide
+    ? [departmentId]
+    : [departmentId, requesterId];
 
   const membersResult = await pool.query(memberScope, memberParams);
   const members = membersResult.rows
@@ -234,7 +238,23 @@ async function listHierarchySubordinates(managerId, targetIds) {
 }
 
 // Add this to your repository.js
-async function getAuthorizedSubordinates(managerId) {
+async function getAuthorizedSubordinates(
+  managerId,
+  requesterRole,
+  departmentId
+) {
+  if (requesterRole === 'SENIOR_TL') {
+    const { rows } = await pool.query(
+      `SELECT id, full_name, email, role FROM users
+       WHERE department_id = $1 AND id <> $2 AND role <> 'ADMIN'
+         AND deleted_at IS NULL
+       ORDER BY CASE role WHEN 'SENIOR_TL' THEN 1 WHEN 'TL' THEN 2
+         WHEN 'CAPTAIN' THEN 3 WHEN 'INTERN' THEN 4 ELSE 5 END,
+         LOWER(COALESCE(NULLIF(TRIM(full_name), ''), email)), LOWER(email), id`,
+      [departmentId, managerId]
+    );
+    return rows;
+  }
   const res = await pool.query(
     `WITH RECURSIVE subordinates AS (
        SELECT id, full_name, email, role, 0 AS depth FROM users WHERE manager_id = $1 AND deleted_at IS NULL

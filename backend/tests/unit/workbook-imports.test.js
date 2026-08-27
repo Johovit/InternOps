@@ -7,6 +7,7 @@ const {
   normalizeEmail,
   isAttendanceSheet,
   parseEmailDetailsWorkbook,
+  parseRatingsSheets,
 } = require('../../src/modules/workbook-imports/parser');
 
 function addSheet(workbook, name, rows) {
@@ -250,6 +251,36 @@ describe('workbook read-only database comparison', () => {
     });
   });
 
+  test('uses profile joining date instead of the Attendance JOINED marker', () => {
+    const result = compareWithDatabase(
+      {
+        interns: [
+          {
+            key: 'code:DATE-001',
+            name: 'Joining Date Person',
+            phone: '9000000024',
+            joinedDate: '2026-04-27',
+            profileJoiningDate: '2026-04-24',
+            workbookStatus: 'ACTIVE',
+            lifecycle: null,
+            attendance: [],
+          },
+        ],
+      },
+      [
+        {
+          id: 'date-user-1',
+          full_name: 'Joining Date Person',
+          phone: '9000000024',
+          joining_date: '2026-04-24',
+          internship_status: 'ACTIVE',
+        },
+      ],
+      []
+    );
+    expect(result.interns[0].profileDifferences).toEqual([]);
+    expect(result.interns[0].status).toBe('MATCHED');
+  });
   test('counts attendance beyond the ten-row browser sample', () => {
     const fullAttendance = Array.from({ length: 14 }, (_, index) => ({
       date: `2026-07-${String(index + 1).padStart(2, '0')}`,
@@ -396,6 +427,66 @@ describe('active intern account dry run', () => {
   });
 });
 
+describe('incomplete active identity handling', () => {
+  const {
+    buildActiveAccountPlan,
+  } = require('../../src/modules/workbook-imports/service');
+  test('skips a row when email, mobile, and Intern Code are all missing', () => {
+    const plan = buildActiveAccountPlan(
+      [
+        {
+          key: 'name:new intern',
+          name: 'New Intern',
+          code: null,
+          phone: null,
+          email: null,
+          emailMatch: 'UNMATCHED',
+          workbookStatus: 'Active',
+          lifecycle: null,
+          attendance: [{ date: '2026-08-26', status: 'PRESENT' }],
+          sourceRows: [{ sheet: 'Attendance - Aug', row: 84 }],
+        },
+      ],
+      {
+        department: { id: 'department-1', name: 'AI Tutor' },
+        manager: { id: 'manager-1', full_name: 'Manager' },
+        existingInterns: [],
+      },
+      { departmentId: 'department-1', managerId: 'manager-1' }
+    );
+    expect(plan.counts).toMatchObject({
+      accountPlanIncompleteIdentitySkipped: 1,
+      accountPlanManualReview: 0,
+    });
+    expect(plan.manualReview).toEqual([]);
+  });
+  test('still requires review when only some identity fields are missing', () => {
+    const plan = buildActiveAccountPlan(
+      [
+        {
+          key: 'phone:9000000084',
+          name: 'Partial Identity',
+          code: null,
+          phone: '9000000084',
+          email: null,
+          emailMatch: 'UNMATCHED',
+          workbookStatus: 'Active',
+          lifecycle: null,
+          attendance: [],
+          sourceRows: [{ sheet: 'Attendance - Aug', row: 84 }],
+        },
+      ],
+      {
+        department: { id: 'department-1', name: 'AI Tutor' },
+        manager: { id: 'manager-1', full_name: 'Manager' },
+        existingInterns: [],
+      },
+      { departmentId: 'department-1', managerId: 'manager-1' }
+    );
+    expect(plan.counts.accountPlanIncompleteIdentitySkipped).toBe(0);
+    expect(plan.counts.accountPlanManualReview).toBe(1);
+  });
+});
 describe('email details workbook matching', () => {
   const {
     applyEmailProfiles,
@@ -902,6 +993,106 @@ describe('completion history safety', () => {
 });
 
 describe('attendance sheet calendar authority', () => {
+  test('a newer Active month overrides an older Completed lifecycle marker', () => {
+    const workbook = XLSX.utils.book_new();
+    addSheet(workbook, 'Attendance - June', [
+      [
+        'NAME',
+        'Intern Code',
+        'Contact Info ',
+        'Status',
+        'Completion Date',
+        '2026-06-01',
+        '2026-06-06',
+      ],
+      [
+        'Reactivated Leader',
+        'INT-919',
+        '9000000919',
+        'In-Active',
+        '2026-06-06',
+        'PRESENT',
+        'COMPLETED',
+      ],
+    ]);
+    addSheet(workbook, 'Attendance - July', [
+      [
+        'NAME',
+        'Intern Code',
+        'Contact Info ',
+        'Status',
+        'Completion Date',
+        '2026-07-01',
+      ],
+      [
+        'Reactivated Leader',
+        'INT-919',
+        '9000000919',
+        'Active',
+        '2026-09-06',
+        'PRESENT',
+      ],
+    ]);
+    addSheet(workbook, 'Attendance - Aug', [
+      [
+        'NAME',
+        'Intern Code',
+        'Contact Info ',
+        'Status',
+        'Completion Date',
+        '2026-08-01',
+      ],
+      [
+        'Reactivated Leader',
+        'INT-919',
+        '9000000919',
+        'Active',
+        '2026-09-06',
+        'PRESENT',
+      ],
+    ]);
+    const intern = previewWorkbook(
+      XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' })
+    ).interns[0];
+    expect(intern.workbookStatus).toBe('Active');
+    expect(intern.latestWorkbookStatusSource.sheet).toBe('Attendance - Aug');
+    expect(intern.lifecycle).toBeNull();
+    expect(intern.lifecycleEvents).toEqual(
+      expect.arrayContaining([expect.objectContaining({ status: 'COMPLETED' })])
+    );
+  });
+  test('a newer lifecycle marker still overrides an older Active row', () => {
+    const workbook = XLSX.utils.book_new();
+    addSheet(workbook, 'Attendance - June', [
+      ['NAME', 'Intern Code', 'Contact Info ', 'Status', '2026-06-01'],
+      ['Later Completed', 'INT-918', '9000000918', 'Active', 'PRESENT'],
+    ]);
+    addSheet(workbook, 'Attendance - Aug', [
+      [
+        'NAME',
+        'Intern Code',
+        'Contact Info ',
+        'Status',
+        '2026-08-01',
+        '2026-08-20',
+      ],
+      [
+        'Later Completed',
+        'INT-918',
+        '9000000918',
+        'In-Active',
+        'PRESENT',
+        'COMPLETED',
+      ],
+    ]);
+    const intern = previewWorkbook(
+      XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' })
+    ).interns[0];
+    expect(intern.lifecycle).toMatchObject({
+      status: 'COMPLETED',
+      date: '2026-08-20',
+    });
+  });
   test('uses calendar month when workbook tabs are newest first', () => {
     const workbook = XLSX.utils.book_new();
     addSheet(workbook, 'Attendance - Aug', [
@@ -946,5 +1137,166 @@ describe('attendance sheet calendar authority', () => {
     expect(intern.completionDate).toBe('2026-10-17');
     expect(intern.latestCompletionDateSource.sheet).toBe('Attendance - Aug');
     expect(intern.extensionDetectedFromAttendance).toBe(true);
+  });
+});
+
+describe('lifecycle status as-of date', () => {
+  function lifecycleWorkbook(markerDate, marker) {
+    const workbook = XLSX.utils.book_new();
+    addSheet(workbook, 'Attendance - Aug', [
+      [
+        'NAME',
+        'Intern Code',
+        'Contact Info ',
+        'Status',
+        'Completion Date',
+        markerDate,
+      ],
+      [
+        'Lifecycle Boundary Intern',
+        'INT-BOUNDARY',
+        '9000000999',
+        'Active',
+        '2026-08-31',
+        marker,
+      ],
+    ]);
+    return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+  }
+
+  test.each(['COMPLETED', 'TERMINATED', 'DISCONTINUED'])(
+    'ignores future %s events when resolving current status',
+    (marker) => {
+      const intern = previewWorkbook(lifecycleWorkbook('2026-08-31', marker), {
+        asOfDate: '2026-08-26',
+      }).interns[0];
+
+      expect(intern.workbookStatus).toBe('Active');
+      expect(intern.lifecycle).toBeNull();
+      expect(intern.lifecycleEvents).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ status: marker, date: '2026-08-31' }),
+        ])
+      );
+    }
+  );
+
+  test('applies a lifecycle event on its effective date', () => {
+    const intern = previewWorkbook(
+      lifecycleWorkbook('2026-08-31', 'COMPLETED'),
+      { asOfDate: '2026-08-31' }
+    ).interns[0];
+
+    expect(intern.lifecycle).toMatchObject({
+      status: 'COMPLETED',
+      date: '2026-08-31',
+    });
+  });
+
+  test('applies a lifecycle event after its effective date', () => {
+    const intern = previewWorkbook(
+      lifecycleWorkbook('2026-08-25', 'COMPLETED'),
+      { asOfDate: '2026-08-26' }
+    ).interns[0];
+
+    expect(intern.lifecycle).toMatchObject({
+      status: 'COMPLETED',
+      date: '2026-08-25',
+    });
+  });
+});
+
+describe('secure weekly ratings parsing', () => {
+  test('matches by Intern Code plus phone, preserves decimals, and skips text scores', () => {
+    const workbook = XLSX.utils.book_new();
+    addSheet(workbook, 'Ratings - Aug', [
+      [
+        'Sno',
+        'NAME',
+        'Intern Code',
+        'Contact Info',
+        'Completion Date',
+        'Reasons (Week 1)',
+        '10th-15th',
+      ],
+      [
+        1,
+        'Current Intern',
+        'INT-001',
+        '+91 90000 00001',
+        '2026-08-18',
+        'Good work',
+        8.5,
+      ],
+      [2, 'Leader', 'INT-002', '+91 90000 00002', '2026-08-18', 'STL', '-'],
+    ]);
+    const interns = [
+      {
+        name: 'Current Intern',
+        code: 'INT-001',
+        phone: '9000000001',
+        attendance: [{ date: '2026-08-01' }],
+      },
+      {
+        name: 'Leader',
+        code: 'INT-002',
+        phone: '9000000002',
+        attendance: [{ date: '2026-08-01' }],
+      },
+    ];
+    const summary = parseRatingsSheets(workbook, interns);
+    expect(summary).toMatchObject({
+      ratingRecords: 2,
+      ratingScoreRecords: 1,
+      ratingReasonOnlyRecords: 1,
+    });
+
+    expect(interns[0].ratings[0]).toMatchObject({
+      score: 8.5,
+      remarks: 'Good work',
+      ratingDate: '2026-08-15',
+    });
+
+    expect(interns[1].ratings[0]).toMatchObject({
+      score: null,
+      remarks: 'STL',
+      ratingDate: '2026-08-15',
+    });
+  });
+  test('imports the completion week but skips periods starting after completion', () => {
+    const workbook = XLSX.utils.book_new();
+    addSheet(workbook, 'Ratings - Aug', [
+      [
+        'NAME',
+        'Intern Code',
+        'Contact Info',
+        'Completion Date',
+        'Reasons (Week 1)',
+        '10th-15th',
+        'Reasons (Week 2)',
+        '17th-22th',
+      ],
+      [
+        'Current Intern',
+        'INT-001',
+        '9000000001',
+        '2026-08-18',
+        'Earlier',
+        8,
+        'Final week',
+        9,
+      ],
+    ]);
+    const interns = [
+      {
+        name: 'Current Intern',
+        code: 'INT-001',
+        phone: '9000000001',
+        attendance: [{ date: '2026-08-01' }],
+      },
+    ];
+    parseRatingsSheets(workbook, interns);
+    expect(interns[0].ratings).toHaveLength(2);
+    expect(interns[0].ratings[1].remarks).toBe('Final week');
   });
 });

@@ -68,6 +68,18 @@ function ManagerHome({ user }) {
   const active = team.filter(
     (m) => !m.suspended && (m.internship_status || 'ACTIVE') === 'ACTIVE'
   ).length;
+  const seniorTlCount = team.filter(
+    (member) => member.role === 'SENIOR_TL'
+  ).length;
+
+  const tlCount = team.filter((member) => member.role === 'TL').length;
+
+  const captainCount = team.filter(
+    (member) => member.role === 'CAPTAIN'
+  ).length;
+
+  const internCount = team.filter((member) => member.role === 'INTERN').length;
+  const isAdmin = user?.role === 'ADMIN';
   const pcts = team
     .map(attendancePct)
     .filter((percentage) => Number.isFinite(percentage));
@@ -113,8 +125,38 @@ function ManagerHome({ user }) {
       {/* Summary Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <StatCard
-          label="Team members"
+          label={isAdmin ? 'Total team members' : 'Team members'}
           value={team.length}
+          sub={
+            isAdmin ? (
+              <span className="block leading-5">
+                <span className="flex items-center gap-2 whitespace-nowrap">
+                  <span>
+                    {seniorTlCount}{' '}
+                    {seniorTlCount === 1 ? 'Senior TL' : 'Senior TLs'}
+                  </span>
+
+                  <span className="text-slate-400 dark:text-slate-500">•</span>
+
+                  <span>
+                    {tlCount} {tlCount === 1 ? 'TL' : 'TLs'}
+                  </span>
+                </span>
+
+                <span className="mt-1 flex items-center gap-2 whitespace-nowrap">
+                  <span>
+                    {captainCount} {captainCount === 1 ? 'Captain' : 'Captains'}
+                  </span>
+
+                  <span className="text-slate-400 dark:text-slate-500">•</span>
+
+                  <span>
+                    {internCount} {internCount === 1 ? 'Intern' : 'Interns'}
+                  </span>
+                </span>
+              </span>
+            ) : undefined
+          }
           icon="👥"
           gradient="from-indigo-500 to-blue-600"
         />

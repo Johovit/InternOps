@@ -199,6 +199,42 @@ describe('PATCH /api/v1/users/:id', () => {
     expect(JSON.parse(response.body).error).toMatch(/Invalid hierarchy/);
   });
 
+  it('allows promoting an intern to TL through hierarchy-aware admin editing', async () => {
+    const response = await inject('PATCH', `/api/v1/users/${internId}`, {
+      role: 'TL',
+    });
+    expect(response.statusCode).toBe(200);
+    expect(JSON.parse(response.body).user.role).toBe('TL');
+  });
+  it('allows changing a TL to Captain when no reports block the demotion', async () => {
+    await pool.query("UPDATE users SET role = 'TL' WHERE id = $1", [internId]);
+    const response = await inject('PATCH', `/api/v1/users/${internId}`, {
+      role: 'CAPTAIN',
+    });
+    expect(response.statusCode).toBe(200);
+    expect(JSON.parse(response.body).user.role).toBe('CAPTAIN');
+  });
+  it('rejects demoting an existing Admin', async () => {
+    const response = await inject('PATCH', `/api/v1/users/${secondAdminId}`, {
+      role: 'TL',
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(JSON.parse(response.body).error).toBe(
+      'Admin role is protected and cannot be changed.'
+    );
+  });
+
+  it('rejects promoting a non-Admin user to Admin', async () => {
+    const response = await inject('PATCH', `/api/v1/users/${internId}`, {
+      role: 'ADMIN',
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(JSON.parse(response.body).error).toBe(
+      'Admin role is protected and cannot be changed.'
+    );
+  });
   it('rejects updates after the authenticated admin is suspended', async () => {
     await pool.query('UPDATE users SET suspended = TRUE WHERE id = $1', [
       seededAdminId,

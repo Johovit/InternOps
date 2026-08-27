@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -16,7 +16,6 @@ import CustomSelect from '../CustomSelect';
 
 const ROLE_OPTIONS = [
   { value: '', label: 'Select Role' },
-  { value: 'SENIOR_TL', label: 'Senior TL' },
   { value: 'TL', label: 'TL' },
   { value: 'CAPTAIN', label: 'Captain' },
   { value: 'INTERN', label: 'Intern' },
@@ -110,7 +109,7 @@ export default function CreateUserModal({ open, onClose }) {
     })),
   ];
 
-  const showManagerSelection = ['INTERN', 'CAPTAIN', 'TL'].includes(role);
+  const showManagerSelection = ['INTERN', 'CAPTAIN'].includes(role);
 
   // Register mutation
   const registerMutation = useMutation({
@@ -181,11 +180,11 @@ export default function CreateUserModal({ open, onClose }) {
 
   const modal = (
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center overflow-y-auto bg-black/20 p-4 dark:bg-black/40"
+      className="internops-modal-backdrop fixed inset-0 z-[9999] flex items-center justify-center overflow-y-auto bg-slate-950/60 backdrop-blur-sm p-4"
       onClick={handleClose}
     >
       <div
-        className="w-full max-w-3xl max-h-[calc(100vh-2rem)] rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl animate-scale-up text-slate-900 dark:text-white overflow-hidden flex flex-col"
+        className="internops-modal-panel w-full max-w-3xl max-h-[calc(100vh-2rem)] rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl animate-scale-up text-slate-900 dark:text-white overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}

@@ -171,7 +171,7 @@ function AttendanceGrid({ members, dates, records, search }) {
       .filter(
         (member) =>
           !query ||
-          `${member.full_name || ''} ${member.email || ''} ${member.role || ''}`
+          `${member.full_name || ''} ${member.email || ''} ${member.intern_code || ''} ${member.role || ''}`
             .toLowerCase()
             .includes(query)
       )
@@ -259,6 +259,9 @@ function AttendanceGrid({ members, dates, records, search }) {
                 <div className="truncate text-sm text-slate-500 dark:text-slate-400">
                   {member.email}
                 </div>
+                <div className="mt-0.5 truncate text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  Intern Code: {member.intern_code || '—'}
+                </div>
               </td>
               <td
                 className={`sticky left-72 z-50 bg-white dark:bg-slate-900 ${ROLE_COLUMN} border-b border-r border-slate-200 px-5 py-4 text-center dark:border-slate-700`}
@@ -339,6 +342,20 @@ export default function DepartmentAttendanceSheet({
 }) {
   const [search, setSearch] = useState('');
   const [fullScreen, setFullScreen] = useState(false);
+  const displayedInternCount = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return new Set(
+      (data?.members || [])
+        .filter(
+          (member) =>
+            !query ||
+            `${member.full_name || ''} ${member.email || ''} ${member.intern_code || ''} ${member.role || ''}`
+              .toLowerCase()
+              .includes(query)
+        )
+        .map((member) => member.id)
+    ).size;
+  }, [data?.members, search]);
 
   useEffect(() => {
     if (!fullScreen) return undefined;
@@ -365,9 +382,14 @@ export default function DepartmentAttendanceSheet({
             <p className="text-xs font-extrabold uppercase tracking-[0.2em] text-emerald-600 dark:text-emerald-300">
               Department attendance sheet
             </p>
-            <h3 className="mt-1 text-2xl font-extrabold text-slate-900 dark:text-white">
-              {departmentName || 'Department'}
-            </h3>
+            <div className="mt-1 flex flex-wrap items-center gap-3">
+              <h3 className="text-2xl font-extrabold text-slate-900 dark:text-white">
+                {departmentName || 'Department'}
+              </h3>
+              <span className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-extrabold text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
+                Total Interns: {displayedInternCount}
+              </span>
+            </div>
           </div>
           <div className="flex w-full flex-wrap items-end justify-end gap-3">
             <label className="w-full text-xs font-bold text-slate-500 dark:text-slate-400 sm:w-48">
@@ -460,7 +482,7 @@ export default function DepartmentAttendanceSheet({
       {content(false)}
       {fullScreen &&
         createPortal(
-          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
+          <div className="internops-modal-backdrop fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4">
             {content(true)}
           </div>,
           document.body

@@ -166,7 +166,6 @@ describe('attendance grid contracts', () => {
     expect(monthPicker).toContain('grid grid-cols-3');
     expect(monthPicker).toContain('Previous year');
     expect(monthPicker).toContain('Next year');
-    expect(monthPicker).toContain('This month');
     expect(monthPicker).toContain('dark:bg-slate-950');
     expect(monthPicker).toContain('disabled={unavailable}');
     expect(sheet).toContain(

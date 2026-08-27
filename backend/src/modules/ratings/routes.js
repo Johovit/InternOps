@@ -28,7 +28,7 @@ module.exports = async function ratingsRoutes(fastify) {
       const { rated_user_id, score, remarks } = z
         .object({
           rated_user_id: z.string().uuid(),
-          score: z.coerce.number().int().min(1).max(10),
+          score: z.coerce.number().multipleOf(0.1).min(1).max(10),
           remarks: z.string().max(2000).optional(),
         })
         .parse(req.body);
@@ -120,6 +120,7 @@ module.exports = async function ratingsRoutes(fastify) {
         departmentId: parsedParams.data.deptId,
         requesterId: req.user.id,
         isAdmin: req.user.role === 'ADMIN',
+        requesterRole: req.user.role,
         from: parsedQuery.data.from,
         to: parsedQuery.data.to,
       });

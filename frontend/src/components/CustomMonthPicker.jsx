@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react';
 
@@ -39,6 +39,7 @@ export default function CustomMonthPicker({
   onChange,
   min,
   max,
+  allowedMonths,
   placeholder = 'Select month',
   className = '',
   disabled = false,
@@ -48,6 +49,23 @@ export default function CustomMonthPicker({
   const selected = parseMonth(value);
   const minimum = parseMonth(min);
   const maximum = parseMonth(max);
+  const allowed = useMemo(
+    () =>
+      Array.isArray(allowedMonths) && allowedMonths.length
+        ? new Set(allowedMonths)
+        : null,
+    [allowedMonths]
+  );
+  const allowedYears = useMemo(
+    () =>
+      allowed
+        ? [
+            ...new Set([...allowed].map((month) => Number(month.slice(0, 4)))),
+          ].sort((a, b) => a - b)
+        : [],
+    [allowed]
+  );
+
   const [open, setOpen] = useState(false);
   const [positionReady, setPositionReady] = useState(false);
   const [viewYear, setViewYear] = useState(selected?.year || current.year);
@@ -57,13 +75,14 @@ export default function CustomMonthPicker({
 
   useEffect(() => {
     if (selected) setViewYear(selected.year);
-  }, [value]);
+  }, [value, selected?.year]);
 
   useEffect(() => {
     if (!open) {
       setPositionReady(false);
       return undefined;
     }
+
     const updatePosition = () => {
       const rect = triggerRef.current?.getBoundingClientRect();
       if (!rect) return;
@@ -81,19 +100,23 @@ export default function CustomMonthPicker({
       setPosition({ top, left, width });
       setPositionReady(true);
     };
+
     const closeOutside = (event) => {
       if (
         !triggerRef.current?.contains(event.target) &&
         !menuRef.current?.contains(event.target)
-      )
+      ) {
         setOpen(false);
+      }
     };
     const closeEscape = (event) => event.key === 'Escape' && setOpen(false);
+
     updatePosition();
     window.addEventListener('resize', updatePosition);
     window.addEventListener('scroll', updatePosition, true);
     document.addEventListener('mousedown', closeOutside);
     document.addEventListener('keydown', closeEscape);
+
     return () => {
       window.removeEventListener('resize', updatePosition);
       window.removeEventListener('scroll', updatePosition, true);
@@ -104,7 +127,11 @@ export default function CustomMonthPicker({
 
   const isDisabled = (year, month) => {
     const candidate = formatMonth(year, month);
-    return (min && candidate < min) || (max && candidate > max);
+    return (
+      (min && candidate < min) ||
+      (max && candidate > max) ||
+      Boolean(allowed && !allowed.has(candidate))
+    );
   };
 
   const chooseMonth = (month) => {
@@ -113,12 +140,19 @@ export default function CustomMonthPicker({
     setOpen(false);
   };
 
-  const chooseCurrent = () => {
-    const candidate = formatMonth(current.year, current.month);
-    if ((min && candidate < min) || (max && candidate > max)) return;
-    setViewYear(current.year);
-    onChange(candidate);
-    setOpen(false);
+  const moveYear = (direction) => {
+    if (!allowedYears.length) {
+      setViewYear((year) => year + direction);
+      return;
+    }
+    const currentIndex = allowedYears.indexOf(viewYear);
+    const nextIndex =
+      currentIndex < 0
+        ? direction > 0
+          ? 0
+          : allowedYears.length - 1
+        : currentIndex + direction;
+    if (allowedYears[nextIndex] != null) setViewYear(allowedYears[nextIndex]);
   };
 
   const picker =
@@ -140,8 +174,11 @@ export default function CustomMonthPicker({
         <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-slate-700">
           <button
             type="button"
-            onClick={() => setViewYear((year) => year - 1)}
-            className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+            onClick={() => moveYear(-1)}
+            disabled={Boolean(
+              allowedYears.length && viewYear <= allowedYears[0]
+            )}
+            className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-35 dark:text-slate-400 dark:hover:bg-slate-800"
             aria-label="Previous year"
           >
             <ChevronLeft className="h-5 w-5" />
@@ -151,20 +188,24 @@ export default function CustomMonthPicker({
           </p>
           <button
             type="button"
-            onClick={() => setViewYear((year) => year + 1)}
-            disabled={Boolean(maximum && viewYear >= maximum.year)}
+            onClick={() => moveYear(1)}
+            disabled={Boolean(
+              allowedYears.length
+                ? viewYear >= allowedYears[allowedYears.length - 1]
+                : maximum && viewYear >= maximum.year
+            )}
             className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-35 dark:text-slate-400 dark:hover:bg-slate-800"
             aria-label="Next year"
           >
             <ChevronRight className="h-5 w-5" />
           </button>
         </div>
+
         <div className="grid grid-cols-3 gap-2 p-4">
           {MONTHS.map((label, index) => {
             const month = index + 1;
             const candidate = formatMonth(viewYear, month);
             const active = candidate === value;
-            const today = viewYear === current.year && month === current.month;
             const unavailable = isDisabled(viewYear, month);
             return (
               <button
@@ -175,24 +216,13 @@ export default function CustomMonthPicker({
                 className={`rounded-xl px-2 py-2.5 text-xs font-extrabold transition ${
                   active
                     ? 'bg-indigo-600 text-white shadow-sm dark:bg-indigo-500'
-                    : today
-                      ? 'border border-indigo-300 bg-indigo-50 text-indigo-700 dark:border-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300'
-                      : 'text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800'
+                    : 'text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800'
                 } disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-transparent dark:disabled:text-slate-700`}
               >
                 {label.slice(0, 3)}
               </button>
             );
           })}
-        </div>
-        <div className="flex justify-end border-t border-slate-200 px-4 py-3 dark:border-slate-700">
-          <button
-            type="button"
-            onClick={chooseCurrent}
-            className="rounded-xl bg-indigo-50 px-4 py-2 text-xs font-extrabold text-indigo-600 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:text-indigo-300 dark:hover:bg-indigo-900/50"
-          >
-            This month
-          </button>
         </div>
       </div>,
       document.body
@@ -215,7 +245,11 @@ export default function CustomMonthPicker({
             {value ? displayMonth(value) : placeholder}
           </span>
           <CalendarDays
-            className={`absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 ${open ? 'text-indigo-500 dark:text-indigo-300' : 'text-slate-400 dark:text-slate-500'}`}
+            className={`absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 ${
+              open
+                ? 'text-indigo-500 dark:text-indigo-300'
+                : 'text-slate-400 dark:text-slate-500'
+            }`}
           />
         </button>
       </div>

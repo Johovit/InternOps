@@ -23,6 +23,8 @@ const detailFields = {
   course: z.string().max(255).optional(),
   year_of_study: z.string().max(50).optional(),
   position: z.string().max(255).optional(),
+  internship_domain: z.string().max(255).optional(),
+  offer_letter_url: z.string().url().max(2000).nullable().optional(),
   joining_date: z.string().max(20).optional(),
   lifecycle_effective_date: z
     .string()
@@ -359,6 +361,11 @@ async function routes(fastify) {
         .object({ role: z.enum(ASSIGNABLE_ROLES) })
         .parse(req.body);
 
+      if (role === 'SENIOR_TL') {
+        return reply.status(409).send({
+          error: 'Senior TL changes must use Departments → Replace Senior TL.',
+        });
+      }
       // A manager may never change their own role here.
       if (req.params.id === req.user.id) {
         return reply
