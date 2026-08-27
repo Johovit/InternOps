@@ -216,11 +216,11 @@ function ManagerHome({ user }) {
             />
 
             <QuickAction
-              to="/attendance"
-              icon="📅"
-              label="Mark attendance"
-              description="Daily records"
-              tint="bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-100 dark:border-emerald-900/60"
+              to="/notices"
+              icon="📢"
+              label="Make announcement"
+              description="Post announcements"
+              tint="bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-100 dark:border-blue-900/60"
             />
 
             <QuickAction
