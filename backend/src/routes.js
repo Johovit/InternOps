@@ -65,6 +65,9 @@ module.exports = async function routes(fastify, opts) {
   fastify.register(require('./modules/workbook-imports/routes'), {
     prefix: '/workbook-imports',
   });
+  fastify.register(require('./modules/assessments/routes'), {
+    prefix: '/assessments',
+  });
   fastify.register(require('./modules/analytics/routes'), {
     prefix: '/analytics',
   });
@@ -76,6 +79,9 @@ module.exports = async function routes(fastify, opts) {
   });
   fastify.register(require('./modules/reports/routes'), {
     prefix: '/reports',
+  });
+  fastify.register(require('./modules/report-templates/routes'), {
+    prefix: '/report-templates',
   });
   fastify.register(require('./modules/reports/export'), {
     prefix: '/reports/export',

@@ -43,6 +43,9 @@ jest.mock('../../src/utils/hierarchy', () => ({
 jest.mock('../../src/modules/auth/verificationService', () => ({
   sendVerificationEmail: jest.fn().mockResolvedValue(undefined),
 }));
+jest.mock('../../src/modules/notifications/repository', () => ({
+  notifyAdmin: jest.fn().mockResolvedValue(undefined),
+}));
 
 jest.mock('../../src/config/redis', () => ({
   blacklistAccessToken: jest.fn(),

@@ -31,7 +31,7 @@ import {
 } from 'lucide-react';
 
 import { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import api from '../lib/axios';
 import { connectSocket, disconnectSocket } from '../lib/socket';
@@ -40,6 +40,7 @@ import useAuthStore from '../store/auth';
 import useFeatureFlagsStore from '../store/featureFlags';
 import { QUERY_KEYS } from '../constants/queryKeys';
 import { ROLE_LABEL } from '../constants/roles';
+import FloatingChatbot from '../components/FloatingChatbot';
 
 const MANAGER_ROLES = ['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN'];
 const ADMIN_AND_SENIOR_TL_ROLES = ['ADMIN', 'SENIOR_TL'];
@@ -78,6 +79,12 @@ const nav = [
   {
     path: '/reports',
     label: 'Reports',
+    icon: FileText,
+    allowedRoles: ADMIN_AND_SENIOR_TL_ROLES,
+  },
+  {
+    path: '/report-templates',
+    label: 'Report Templates',
     icon: FileText,
     allowedRoles: ADMIN_AND_SENIOR_TL_ROLES,
   },
@@ -224,11 +231,38 @@ export default function DashboardLayout() {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const accessToken = useAuthStore((s) => s.accessToken);
+  const queryClient = useQueryClient();
 
   useEffect(() => {
-    if (accessToken) connectSocket(accessToken);
-    return () => disconnectSocket();
-  }, [accessToken]);
+    if (!accessToken) return undefined;
+
+    const socket = connectSocket(accessToken);
+
+    // Live-update the bell badge the instant a new notification arrives,
+    // instead of waiting for the next 30s poll (#1753).
+    const handleNotificationReceived = (payload) => {
+      if (typeof payload?.unreadCount === 'number') {
+        queryClient.setQueryData(['notifications', 'unread-count'], {
+          unread: payload.unreadCount,
+        });
+      }
+
+      // Keep any mounted notifications list fresh too, without refetching
+      // the unread-count query we just updated optimistically above.
+      queryClient.invalidateQueries({
+        predicate: (query) =>
+          query.queryKey[0] === 'notifications' &&
+          query.queryKey[1] !== 'unread-count',
+      });
+    };
+
+    socket?.on('notification-received', handleNotificationReceived);
+
+    return () => {
+      socket?.off('notification-received', handleNotificationReceived);
+      disconnectSocket();
+    };
+  }, [accessToken, queryClient]);
 
   const role = user?.role;
   const flags = useFeatureFlagsStore((s) => s.flags);
@@ -248,6 +282,16 @@ export default function DashboardLayout() {
     queryKey: QUERY_KEYS.USER_PROFILE,
     queryFn: () => api.get('/users/me').then((r) => r.data),
   });
+
+  const { data: unreadData } = useQuery({
+    queryKey: ['notifications', 'unread-count'],
+    queryFn: () => api.get('/notifications/unread-count').then((r) => r.data),
+    refetchInterval: 30000,
+    refetchIntervalInBackground: false,
+    enabled: !!user,
+  });
+
+  const unreadCount = unreadData?.unread || 0;
 
   const displayName = me?.full_name || user?.fullName || user?.email;
   const avatarUrl = me?.avatar_url || null;
@@ -526,9 +570,22 @@ export default function DashboardLayout() {
             <Link
               to="/notifications"
               onClick={saveSidebarScroll}
+              aria-label={
+                unreadCount > 0
+                  ? `Notifications (${unreadCount} unread)`
+                  : 'Notifications'
+              }
+              title="Notifications"
               className="w-10 h-10 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center transition"
             >
-              <Bell className="w-5 h-5 text-slate-600 dark:text-slate-300" />
+              <div className="relative">
+                <Bell className="w-5 h-5 text-slate-600 dark:text-slate-300" />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 flex h-4 min-w-[16px] px-1 items-center justify-center text-[9px] font-extrabold text-white bg-red-500 rounded-full border border-white dark:border-slate-900 select-none">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
+              </div>
             </Link>
             <Link
               to="/profile"
@@ -558,6 +615,7 @@ export default function DashboardLayout() {
         onCancel={() => setShowLogoutConfirm(false)}
         danger={true}
       />
+      <FloatingChatbot />
     </div>
   );
 }

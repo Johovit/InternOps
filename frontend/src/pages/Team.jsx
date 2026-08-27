@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../lib/axios';
 import useAuthStore from '../store/auth';
-import { Eye, EyeOff, Users, X } from 'lucide-react';
+import { Users } from 'lucide-react';
 import CustomSelect from '../components/CustomSelect';
 import CustomDatePicker from '../components/CustomDatePicker';
 import { ApiErrorState } from '../components/ui';
@@ -28,13 +28,7 @@ const ROLE_BADGE = {
     'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-100 border border-slate-200 dark:border-slate-500',
 };
 
-const STATUS_OPTIONS = [
-  'ACTIVE',
-  'ON_HOLD',
-  'COMPLETED',
-  'TERMINATED',
-  'DISCONTINUED',
-];
+const STATUS_OPTIONS = ['ACTIVE', 'COMPLETED', 'ON_HOLD', 'TERMINATED'];
 
 const STATUS_BADGE = {
   ACTIVE:
@@ -50,11 +44,11 @@ const STATUS_BADGE = {
 // A manager may add any member ranked below themselves.
 const ROLE_RANK = { ADMIN: 4, SENIOR_TL: 3, TL: 2, CAPTAIN: 1, INTERN: 0 };
 const DISPLAY_ROLE_ORDER = {
-  SENIOR_TL: 0,
-  TL: 1,
-  CAPTAIN: 2,
-  INTERN: 3,
-  ADMIN: 4,
+  ADMIN: 0,
+  SENIOR_TL: 1,
+  TL: 2,
+  CAPTAIN: 3,
+  INTERN: 4,
 };
 const ASSIGNABLE = ['SENIOR_TL', 'TL', 'CAPTAIN', 'INTERN'];
 
@@ -67,8 +61,9 @@ function attendancePct(m) {
   const total = Number(m.attendance_total);
   const present = Number(m.present_count);
   if (!Number.isFinite(total) || total <= 0) return null;
-  if (!Number.isFinite(present) || present < 0) return 0;
-  return Math.max(0, Math.min(100, Math.round((present / total) * 100)));
+  if (!Number.isFinite(present)) return null;
+
+  return Math.round((present / total) * 100);
 }
 
 function pctColor(p) {
@@ -124,6 +119,68 @@ function Stars({ value }) {
   );
 }
 
+const RATING_OPTIONS = [
+  { value: '', label: 'All Ratings' },
+  { value: '1', label: '1' },
+  { value: '2', label: '2' },
+  { value: '3', label: '3' },
+  { value: '4', label: '4' },
+  { value: '5', label: '5' },
+  { value: '6', label: '6' },
+  { value: '7', label: '7' },
+  { value: '8', label: '8' },
+  { value: '9', label: '9' },
+  { value: '10', label: '10' },
+];
+
+const ELIGIBILITY_OPTIONS = [
+  { value: '', label: 'All' },
+  { value: 'ELIGIBLE', label: '🟢 Eligible' },
+  { value: 'NOT_ELIGIBLE', label: '🔴 Not Eligible' },
+];
+
+const STATUS_FILTER_OPTIONS = [
+  { value: '', label: 'All status' },
+  { value: 'ACTIVE', label: 'Active' },
+  { value: 'COMPLETED', label: 'Completed' },
+  { value: 'ON_HOLD', label: 'On Hold' },
+  { value: 'TERMINATED', label: 'Terminated' },
+  { value: 'SUSPENDED', label: 'Suspended' },
+];
+
+function RatingWithBadge({ value }) {
+  if (value == null || value === '') {
+    return <span className="text-slate-400 dark:text-slate-500">—</span>;
+  }
+
+  const raw = Number(value);
+  if (Number.isNaN(raw)) {
+    return <span className="text-slate-400 dark:text-slate-500">—</span>;
+  }
+
+  const roundedRating = Math.round(raw);
+  const isNotEligible = roundedRating >= 1 && roundedRating <= 4;
+  const isEligible = roundedRating >= 5;
+
+  return (
+    <div className="flex items-center gap-2">
+      <span className="font-extrabold text-slate-900 dark:text-white text-sm">
+        {roundedRating}
+      </span>
+      {isNotEligible && (
+        <span className="px-1.5 py-0.5 rounded-full text-[11px] font-bold bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border border-red-100 dark:border-red-900/60 whitespace-nowrap">
+          🔴 Not Eligible
+        </span>
+      )}
+      {isEligible && (
+        <span className="px-1.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-100 dark:border-emerald-900/60 whitespace-nowrap">
+          🟢 Eligible
+        </span>
+      )}
+    </div>
+  );
+}
+
 const EDIT_FIELDS = [
   { key: 'full_name', label: 'Full name' },
   { key: 'phone', label: 'Phone' },
@@ -133,38 +190,31 @@ const EDIT_FIELDS = [
   { key: 'year_of_study', label: 'Year of study' },
   { key: 'position', label: 'Position / Designation' },
   { key: 'joining_date', label: 'Joining date', type: 'date' },
-  { key: 'completion_date', label: 'Completion date', type: 'date' },
-  {
-    key: 'extended_completion_date',
-    label: 'Extended completion date',
-    type: 'date',
-  },
-  {
-    key: 'lifecycle_effective_date',
-    label: 'Termination / discontinuation effective date',
-    type: 'date',
-  },
   { key: 'internship_status', label: 'Status', type: 'select' },
   { key: 'notes', label: 'Notes', type: 'textarea' },
 ];
 
 function StatCard({ label, value, sub }) {
   return (
-    <div className="relative min-h-[148px] overflow-hidden rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-slate-700 dark:bg-slate-900 dark:shadow-none">
-      <div className="absolute -right-8 -top-8 w-24 h-24 rounded-full bg-gradient-to-br from-indigo-500 to-blue-600 opacity-10 dark:opacity-20" />
+    <div className="relative min-h-[190px] overflow-hidden rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-5 shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:shadow-none">
+      <div className="absolute -right-8 -top-8 h-24 w-24 rounded-full bg-indigo-500/10 dark:bg-indigo-400/15" />
 
-      <div className="relative z-10 flex h-full flex-col justify-center">
-        <p className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-          {value}
-        </p>
-        <p className="text-sm text-slate-600 dark:text-slate-400 mt-2">
-          {label}
-        </p>
-        {sub && (
-          <div className="mt-1.5 text-xs font-semibold leading-5 text-slate-500 dark:text-slate-400">
-            {sub}
-          </div>
-        )}
+      <div className="relative z-10 flex h-full min-h-[150px] w-full flex-col justify-center">
+        <div className="shrink-0">
+          <p className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+            {value}
+          </p>
+          <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+            {label}
+          </p>
+        </div>
+        <div className="mt-0.5 min-h-[42px]">
+          {sub && (
+            <div className="text-xs text-slate-500 dark:text-slate-500">
+              {sub}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -179,9 +229,13 @@ function Avatar({ m, size = 'w-10 h-10' }) {
     />
   ) : (
     <div
-      className={`${size} rounded-2xl bg-gradient-to-br from-indigo-500 via-blue-500 to-violet-600 text-white flex items-center justify-center text-sm font-extrabold shadow-sm`}
+      className={`${size} relative isolate shrink-0 overflow-hidden rounded-2xl border border-indigo-400/35 bg-slate-900 text-white shadow-[0_7px_18px_rgba(15,23,42,0.28)] ring-1 ring-indigo-300/20 dark:border-indigo-400/30 dark:bg-slate-800`}
     >
-      {initials(m)}
+      <span className="absolute -right-3 -top-3 h-8 w-8 rounded-full bg-indigo-500/70 blur-[1px]" />
+      <span className="absolute -bottom-4 -left-3 h-9 w-9 rounded-full bg-blue-500/35 blur-sm" />
+      <span className="relative flex h-full w-full items-center justify-center text-sm font-extrabold tracking-wide drop-shadow-sm">
+        {initials(m)}
+      </span>
     </div>
   );
 }
@@ -273,11 +327,11 @@ function AddMemberModal({ onClose }) {
 
   const modal = (
     <div
-      className="internops-modal-backdrop fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/70 backdrop-blur-sm p-4"
       onClick={onClose}
     >
       <div
-        className="internops-modal-panel w-full max-w-3xl max-h-[86vh] rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl overflow-hidden flex flex-col"
+        className="w-full max-w-3xl max-h-[86vh] rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -295,11 +349,10 @@ function AddMemberModal({ onClose }) {
           <button
             type="button"
             onClick={onClose}
-            className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-slate-100 p-0 text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 dark:hover:text-white"
+            className="w-10 h-10 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 text-2xl leading-none shrink-0"
             title="Close"
-            aria-label="Close Add Team Member dialog"
           >
-            <X className="h-5 w-5" aria-hidden="true" />
+            &times;
           </button>
         </div>
 
@@ -369,17 +422,10 @@ function AddMemberModal({ onClose }) {
 
                   <button
                     type="button"
-                    onClick={() => setShowPass((current) => !current)}
-                    className="absolute right-3 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-xl p-0 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/50 dark:hover:bg-slate-800 dark:hover:text-slate-200"
-                    title={showPass ? 'Hide password' : 'Show password'}
-                    aria-label={showPass ? 'Hide password' : 'Show password'}
-                    aria-pressed={showPass}
+                    onClick={() => setShowPass((s) => !s)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm"
                   >
-                    {showPass ? (
-                      <EyeOff className="h-5 w-5" aria-hidden="true" />
-                    ) : (
-                      <Eye className="h-5 w-5" aria-hidden="true" />
-                    )}
+                    {showPass ? '🙈' : '👁️'}
                   </button>
                 </div>
               </Field>
@@ -635,7 +681,7 @@ function MemberDetail({ memberId, onClose }) {
   const member = fetchedMember || teamMembers.find((m) => m.id === memberId);
 
   useEffect(() => {
-    if (member) {
+    if (member && !edit) {
       setForm({
         full_name: member.full_name || '',
         phone: member.phone || '',
@@ -651,7 +697,7 @@ function MemberDetail({ memberId, onClose }) {
         notes: member.notes || '',
       });
     }
-  }, [memberId, member]);
+  }, [memberId, member, edit]);
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['teamMember', memberId] });
@@ -749,11 +795,11 @@ function MemberDetail({ memberId, onClose }) {
 
   return (
     <div
-      className="internops-modal-backdrop fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex justify-end z-50"
+      className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex justify-end z-50"
       onClick={onClose}
     >
       <div
-        className="internops-modal-panel w-full max-w-md bg-slate-50 dark:bg-slate-950 h-full overflow-auto shadow-2xl border-l border-slate-200 dark:border-slate-700"
+        className="w-full max-w-md bg-slate-50 dark:bg-slate-950 h-full overflow-auto shadow-2xl border-l border-slate-200 dark:border-slate-700"
         onClick={(e) => e.stopPropagation()}
       >
         {memberIsError && !member ? (
@@ -790,7 +836,7 @@ function MemberDetail({ memberId, onClose }) {
                   <p className="text-white/80 text-sm">{member.email}</p>
 
                   <span
-                    className={`mt-2 inline-flex whitespace-nowrap px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                    className={`inline-flex mt-2 px-2.5 py-0.5 rounded-full text-xs font-bold whitespace-nowrap ${
                       ROLE_BADGE[member.role] || 'bg-white/20 text-white'
                     }`}
                   >
@@ -802,77 +848,29 @@ function MemberDetail({ memberId, onClose }) {
 
             <div className="p-6 space-y-4">
               <div className="grid grid-cols-3 gap-3 text-center">
-                <div className="flex h-[112px] min-w-0 flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white px-2 py-3 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-                  <p className="text-2xl font-extrabold leading-none text-slate-900 dark:text-white">
+                <div className="bg-white dark:bg-slate-900 p-3 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                  <p className="text-xl font-extrabold text-slate-900 dark:text-white">
                     {pct === null ? '—' : `${pct}%`}
                   </p>
-
-                  <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
                     Attendance
                   </p>
                 </div>
 
-                <div className="flex h-[112px] min-w-0 flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white px-2 py-3 text-center shadow-sm dark:border-slate-700 dark:bg-slate-900">
-                  <div className="flex items-baseline justify-center gap-1">
-                    <span className="text-2xl font-extrabold leading-none text-slate-900 dark:text-white">
-                      {member.avg_rating == null || member.avg_rating === ''
-                        ? '—'
-                        : Number(member.avg_rating)
-                            .toFixed(1)
-                            .replace(/\.0$/, '')}
-                    </span>
-
-                    {member.avg_rating != null && member.avg_rating !== '' && (
-                      <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
-                        /10
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="mt-2 whitespace-nowrap text-[13px] leading-none tracking-[0.03em] text-amber-500">
-                    {member.avg_rating == null || member.avg_rating === '' ? (
-                      <span className="text-slate-400 dark:text-slate-500">
-                        —
-                      </span>
-                    ) : (
-                      <>
-                        {'★'.repeat(
-                          Math.max(
-                            0,
-                            Math.min(
-                              5,
-                              Math.round(Number(member.avg_rating) / 2)
-                            )
-                          )
-                        )}
-                        <span className="text-slate-300 dark:text-slate-700">
-                          {'★'.repeat(
-                            5 -
-                              Math.max(
-                                0,
-                                Math.min(
-                                  5,
-                                  Math.round(Number(member.avg_rating) / 2)
-                                )
-                              )
-                          )}
-                        </span>
-                      </>
-                    )}
-                  </div>
-
-                  <p className="mt-2 text-[11px] font-semibold leading-none text-slate-500 dark:text-slate-400">
-                    {Number(member.rating_count) || 0}{' '}
-                    {Number(member.rating_count) === 1 ? 'rating' : 'ratings'}
+                <div className="bg-white dark:bg-slate-900 p-3 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                  <p className="text-base font-extrabold">
+                    <Stars value={member.avg_rating} />
+                  </p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {member.rating_count} ratings
                   </p>
                 </div>
 
-                <div className="flex h-[112px] min-w-0 flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white px-2 py-3 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-                  <p className="text-2xl font-extrabold leading-none text-slate-900 dark:text-white">
+                <div className="bg-white dark:bg-slate-900 p-3 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                  <p className="text-xl font-extrabold text-slate-900 dark:text-white">
                     {member.verified_tasks}/{member.total_tasks}
                   </p>
-
-                  <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
                     Tasks done
                   </p>
                 </div>
@@ -916,11 +914,11 @@ function MemberDetail({ memberId, onClose }) {
               </div>
 
               {tab === 'history' ? (
-                <div className="internops-modal-panel bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm p-5">
+                <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm p-5">
                   <HistorySection memberId={memberId} />
                 </div>
               ) : (
-                <div className="internops-modal-panel bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm p-5">
+                <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm p-5">
                   <div className="flex items-center justify-between mb-4">
                     <h4 className="font-extrabold text-slate-900 dark:text-white">
                       Details
@@ -940,34 +938,12 @@ function MemberDetail({ memberId, onClose }) {
                     <dl className="space-y-1 text-sm">
                       <Row label="Reports to" value={member.manager_name} />
                       <Row label="Department" value={member.department_name} />
-                      <Row label="Intern Code" value={member.intern_code} />
                       <Row label="Phone" value={member.phone} />
                       <Row label="Location" value={member.location} />
                       <Row label="College" value={member.college} />
                       <Row label="Course" value={member.course} />
                       <Row label="Year" value={member.year_of_study} />
                       <Row label="Position" value={member.position} />
-                      <Row
-                        label="Internship Domain"
-                        value={member.internship_domain}
-                      />
-                      {member.offer_letter_url && (
-                        <div className="flex items-center justify-between gap-4 py-2">
-                          <dt className="font-semibold text-slate-500 dark:text-slate-400">
-                            Offer Letter
-                          </dt>
-                          <dd>
-                            <a
-                              href={member.offer_letter_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="font-extrabold text-indigo-600 hover:text-indigo-700 dark:text-indigo-300 dark:hover:text-indigo-200"
-                            >
-                              View offer letter
-                            </a>
-                          </dd>
-                        </div>
-                      )}
                       <Row
                         label="Joining date"
                         value={
@@ -1073,7 +1049,7 @@ function MemberDetail({ memberId, onClose }) {
 
               {/* Hierarchical management: role + manager (managers only) */}
               {rolesBelow(user?.role).length > 0 && member.id !== user?.id && (
-                <div className="internops-modal-panel bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm p-5 space-y-4">
+                <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm p-5 space-y-4">
                   <h4 className="font-extrabold text-slate-900 dark:text-white">
                     Manage
                   </h4>
@@ -1219,7 +1195,7 @@ function PendingProofsPanel({ onMember }) {
   if (!isLoading && !isError && proofs.length === 0) return null;
 
   return (
-    <div className="internops-modal-panel bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-amber-100 dark:border-amber-900/60 mb-5">
+    <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-amber-100 dark:border-amber-900/60 mb-5">
       <button
         onClick={() => setOpen((o) => !o)}
         className="w-full flex items-center justify-between p-4 text-left"
@@ -1299,7 +1275,11 @@ function PendingProofsPanel({ onMember }) {
 
 export default function Team() {
   const [search, setSearch] = useState('');
+  const [deptFilter, setDeptFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
+  const [ratingFilter, setRatingFilter] = useState('');
+  const [eligibilityFilter, setEligibilityFilter] = useState('');
   const [view, setView] = useState('table');
   const [selected, setSelected] = useState(null);
   const [adding, setAdding] = useState(false);
@@ -1320,26 +1300,98 @@ export default function Team() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
+
     return members
       .filter((m) => {
         if (roleFilter && m.role !== roleFilter) return false;
+
+        if (deptFilter) {
+          const mDept = m.department_name || m.department_id || '';
+          if (mDept !== deptFilter) return false;
+        }
+
+        if (statusFilter) {
+          if (statusFilter === 'SUSPENDED') {
+            if (!m.suspended) return false;
+          } else {
+            const mStatus = m.internship_status || 'ACTIVE';
+            if (mStatus !== statusFilter) return false;
+          }
+        }
+
+        const rawRating = m.rating ?? m.avg_rating;
+        const numRating =
+          rawRating != null && rawRating !== '' ? Number(rawRating) : null;
+
+        if (ratingFilter) {
+          if (numRating == null || Number.isNaN(numRating)) return false;
+          if (Math.round(numRating) !== Number(ratingFilter)) return false;
+        }
+
+        if (eligibilityFilter) {
+          if (numRating == null || Number.isNaN(numRating)) return false;
+          const rounded = Math.round(numRating);
+          if (
+            eligibilityFilter === 'ELIGIBLE' &&
+            (rounded < 5 || rounded > 10)
+          ) {
+            return false;
+          }
+          if (
+            eligibilityFilter === 'NOT_ELIGIBLE' &&
+            (rounded < 1 || rounded > 4)
+          ) {
+            return false;
+          }
+        }
+
         if (!q) return true;
-        return [m.full_name, m.email, m.college, m.position].some((v) =>
-          (v || '').toLowerCase().includes(q)
-        );
+
+        return [
+          m.full_name,
+          m.email,
+          m.college,
+          m.position,
+          m.id,
+          m.department_name,
+        ].some((v) => (v || '').toLowerCase().includes(q));
       })
       .sort((a, b) => {
         const roleDifference =
           (DISPLAY_ROLE_ORDER[a.role] ?? 99) -
           (DISPLAY_ROLE_ORDER[b.role] ?? 99);
         if (roleDifference) return roleDifference;
-        return String(a.full_name || a.email || '').localeCompare(
-          String(b.full_name || b.email || ''),
+        return (a.full_name || a.email || '').localeCompare(
+          b.full_name || b.email || '',
           undefined,
           { sensitivity: 'base' }
         );
       });
-  }, [members, search, roleFilter]);
+  }, [
+    members,
+    search,
+    roleFilter,
+    deptFilter,
+    statusFilter,
+    ratingFilter,
+    eligibilityFilter,
+  ]);
+
+  const departmentFilterOptions = useMemo(() => {
+    const depts = [
+      ...new Set(
+        members.map((m) => m.department_name || m.department_id).filter(Boolean)
+      ),
+    ];
+
+    return [
+      { value: '', label: 'All departments' },
+      ...depts.map((d) => ({
+        value: d,
+        label: d,
+      })),
+    ];
+  }, [members]);
 
   const roles = useMemo(
     () => [...new Set(members.map((m) => m.role))],
@@ -1381,31 +1433,44 @@ export default function Team() {
       (sum, m) => sum + (Number(m.pending_proofs) || 0),
       0
     );
-
     const seniorTlCount = members.filter(
       (member) => member.role === 'SENIOR_TL'
     ).length;
-
     const tlCount = members.filter((member) => member.role === 'TL').length;
-
     const captainCount = members.filter(
       (member) => member.role === 'CAPTAIN'
     ).length;
-
     const internCount = members.filter(
       (member) => member.role === 'INTERN'
     ).length;
+    const memberBreakdown = (
+      <span className="block text-[13px] font-semibold leading-5 text-slate-700 dark:text-slate-300">
+        <span className="flex items-center gap-2.5 whitespace-nowrap">
+          <span>
+            {seniorTlCount} {seniorTlCount === 1 ? 'Senior TL' : 'Senior TLs'}
+          </span>
+          <span className="font-extrabold text-indigo-400 dark:text-indigo-300">
+            •
+          </span>
+          <span>
+            {tlCount} {tlCount === 1 ? 'TL' : 'TLs'}
+          </span>
+        </span>
+        <span className="mt-0.5 flex items-center gap-2.5 whitespace-nowrap">
+          <span>
+            {captainCount} {captainCount === 1 ? 'Captain' : 'Captains'}
+          </span>
+          <span className="font-extrabold text-indigo-400 dark:text-indigo-300">
+            •
+          </span>
+          <span>
+            {internCount} {internCount === 1 ? 'Intern' : 'Interns'}
+          </span>
+        </span>
+      </span>
+    );
 
-    return {
-      active,
-      avgAtt,
-      avgRating,
-      pendingProofs,
-      seniorTlCount,
-      tlCount,
-      captainCount,
-      internCount,
-    };
+    return { active, avgAtt, avgRating, pendingProofs, memberBreakdown };
   }, [members]);
 
   const exportCsv = async () => {
@@ -1487,29 +1552,7 @@ export default function Team() {
         <StatCard
           label="Total members"
           value={members.length}
-          sub={
-            user?.role === 'ADMIN' ? (
-              <span className="block leading-5">
-                <span className="flex items-center gap-2 whitespace-nowrap">
-                  <span>{stats.seniorTlCount} Senior TL</span>
-                  <span className="text-slate-400 dark:text-slate-500">•</span>
-                  <span>{stats.tlCount} TL</span>
-                </span>
-
-                <span className="mt-1 flex items-center gap-2 whitespace-nowrap">
-                  <span>
-                    {stats.captainCount}{' '}
-                    {stats.captainCount === 1 ? 'Captain' : 'Captains'}
-                  </span>
-                  <span className="text-slate-400 dark:text-slate-500">•</span>
-                  <span>
-                    {stats.internCount}{' '}
-                    {stats.internCount === 1 ? 'Intern' : 'Interns'}
-                  </span>
-                </span>
-              </span>
-            ) : undefined
-          }
+          sub={stats.memberBreakdown}
         />
         <StatCard label="Active" value={stats.active} />
         <StatCard
@@ -1544,14 +1587,46 @@ export default function Team() {
         </div>
 
         <CustomSelect
+          value={deptFilter}
+          onChange={setDeptFilter}
+          options={departmentFilterOptions}
+          placeholder="All departments"
+          className="w-full sm:w-52 [&>button]:h-12 [&>button]:flex [&>button]:items-center [&>button]:whitespace-nowrap"
+        />
+
+        <CustomSelect
+          value={statusFilter}
+          onChange={setStatusFilter}
+          options={STATUS_FILTER_OPTIONS}
+          placeholder="All status"
+          className="w-full sm:w-36 [&>button]:h-12 [&>button]:flex [&>button]:items-center [&>button]:whitespace-nowrap"
+        />
+
+        <CustomSelect
           value={roleFilter}
           onChange={setRoleFilter}
           options={roleFilterOptions}
           placeholder="All roles"
-          className="w-full sm:w-44"
+          className="w-full sm:w-36 [&>button]:h-12 [&>button]:flex [&>button]:items-center [&>button]:whitespace-nowrap"
         />
 
-        <div className="flex rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden bg-white dark:bg-slate-900 shadow-sm">
+        <CustomSelect
+          value={ratingFilter}
+          onChange={setRatingFilter}
+          options={RATING_OPTIONS}
+          placeholder="All Ratings"
+          className="w-full sm:w-36 [&>button]:h-12 [&>button]:flex [&>button]:items-center [&>button]:whitespace-nowrap"
+        />
+
+        <CustomSelect
+          value={eligibilityFilter}
+          onChange={setEligibilityFilter}
+          options={ELIGIBILITY_OPTIONS}
+          placeholder="All"
+          className="w-full sm:w-40 [&>button]:h-12 [&>button]:flex [&>button]:items-center [&>button]:whitespace-nowrap"
+        />
+
+        <div className="flex h-12 items-stretch rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden bg-white dark:bg-slate-900 shadow-sm">
           <button
             onClick={() => setView('table')}
             className={`px-4 py-3 text-sm font-bold transition ${
@@ -1577,25 +1652,41 @@ export default function Team() {
       </div>
 
       {filtered.length === 0 ? (
-        <div className="internops-modal-panel bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm p-10 text-center text-slate-500 dark:text-slate-400">
+        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm p-10 text-center text-slate-500 dark:text-slate-400">
           {members.length === 0
             ? 'You have no team members yet. Click “Add Member” to get started.'
             : 'No members match your search.'}
         </div>
       ) : view === 'table' ? (
-        <div className="internops-modal-panel bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none overflow-x-auto">
-          <table className="w-full text-sm">
+        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none overflow-hidden">
+          <table className="w-full table-fixed text-sm">
             <thead className="bg-slate-50 dark:bg-slate-950 text-left text-slate-600 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700">
               <tr>
-                <th className="p-4 font-extrabold">Member</th>
-                <th className="p-4 font-extrabold">Role</th>
-                <th className="p-4 font-extrabold">Department</th>
-                <th className="p-4 font-extrabold">Phone</th>
-                <th className="p-4 font-extrabold w-40">Attendance</th>
-                <th className="p-4 font-extrabold">Rating</th>
-                <th className="p-4 font-extrabold">Tasks</th>
-                <th className="p-4 font-extrabold">Pending</th>
-                <th className="p-4 font-extrabold">Status</th>
+                <th className="w-[25%] px-3 py-4 font-extrabold">Member</th>
+                <th className="w-[8%] px-1.5 py-4 font-extrabold text-center">
+                  Role
+                </th>
+                <th className="w-[9%] px-1.5 py-4 font-extrabold text-center">
+                  Department
+                </th>
+                <th className="w-[10%] px-1.5 py-4 font-extrabold text-center">
+                  Phone
+                </th>
+                <th className="w-[11%] px-1.5 py-4 font-extrabold text-center">
+                  Attendance
+                </th>
+                <th className="w-[12%] px-1.5 py-4 font-extrabold text-center">
+                  Rating
+                </th>
+                <th className="w-[7%] px-1.5 py-4 font-extrabold text-center">
+                  Tasks
+                </th>
+                <th className="w-[8%] px-1.5 py-4 font-extrabold text-center">
+                  Pending
+                </th>
+                <th className="w-[10%] px-1.5 py-4 font-extrabold text-center">
+                  Status
+                </th>
               </tr>
             </thead>
 
@@ -1613,25 +1704,25 @@ export default function Team() {
                     } hover:bg-indigo-50/50 dark:hover:bg-slate-800`}
                     onClick={() => setSelected(m.id)}
                   >
-                    <td className="p-4">
-                      <div className="flex items-center gap-3">
+                    <td className="px-3 py-4">
+                      <div className="flex min-w-0 items-center gap-3">
                         <Avatar m={m} />
 
-                        <div>
-                          <div className="font-extrabold text-slate-900 dark:text-white">
+                        <div className="min-w-0">
+                          <div className="truncate font-extrabold text-slate-900 dark:text-white">
                             {m.full_name || '—'}
                           </div>
 
-                          <div className="text-slate-500 dark:text-slate-400 text-xs">
+                          <div className="truncate text-xs text-slate-500 dark:text-slate-400">
                             {m.email}
                           </div>
                         </div>
                       </div>
                     </td>
 
-                    <td className="p-4">
+                    <td className="px-1.5 py-4 text-center align-middle">
                       <span
-                        className={`inline-flex whitespace-nowrap px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                        className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-bold whitespace-nowrap ${
                           ROLE_BADGE[m.role] || ROLE_BADGE.INTERN
                         }`}
                       >
@@ -1639,21 +1730,21 @@ export default function Team() {
                       </span>
                     </td>
 
-                    <td className="p-4 text-slate-700 dark:text-slate-300">
+                    <td className="px-1.5 py-4 text-center align-middle text-slate-700 dark:text-slate-300">
                       {m.department_name || '—'}
                     </td>
 
-                    <td className="p-4 text-slate-700 dark:text-slate-300">
+                    <td className="px-1.5 py-4 text-center align-middle text-slate-700 dark:text-slate-300">
                       {m.phone || '—'}
                     </td>
 
-                    <td className="p-4">
+                    <td className="px-1.5 py-4 text-center align-middle">
                       {pct === null ? (
                         <span className="text-slate-400 dark:text-slate-500">
                           No data
                         </span>
                       ) : (
-                        <div className="flex items-center gap-2">
+                        <div className="mx-auto flex max-w-28 items-center justify-center gap-1.5">
                           <div className="flex-1 h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
                             <div
                               className={`h-full ${pctColor(pct)}`}
@@ -1667,15 +1758,15 @@ export default function Team() {
                       )}
                     </td>
 
-                    <td className="p-4">
-                      <Stars value={m.avg_rating} />
+                    <td className="px-1.5 py-4 text-center align-middle [&>div]:justify-center">
+                      <RatingWithBadge value={m.rating ?? m.avg_rating} />
                     </td>
 
-                    <td className="p-4 text-slate-700 dark:text-slate-300">
+                    <td className="px-1.5 py-4 text-center align-middle text-slate-700 dark:text-slate-300">
                       {m.verified_tasks}/{m.total_tasks}
                     </td>
 
-                    <td className="p-4">
+                    <td className="px-1.5 py-4 text-center align-middle">
                       {Number(m.pending_proofs) > 0 ? (
                         <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-100 dark:border-amber-900/60">
                           {m.pending_proofs} to verify
@@ -1687,14 +1778,14 @@ export default function Team() {
                       )}
                     </td>
 
-                    <td className="p-4">
+                    <td className="px-1.5 py-4 text-center align-middle">
                       {m.suspended ? (
-                        <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border border-red-100 dark:border-red-900/60">
+                        <span className="inline-flex whitespace-nowrap px-2 py-0.5 rounded-full text-[11px] font-bold bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border border-red-100 dark:border-red-900/60">
                           Suspended
                         </span>
                       ) : (
                         <span
-                          className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                          className={`inline-flex whitespace-nowrap px-2 py-0.5 rounded-full text-[11px] font-bold ${
                             STATUS_BADGE[m.internship_status] ||
                             STATUS_BADGE.ACTIVE
                           }`}
@@ -1718,7 +1809,7 @@ export default function Team() {
               <div
                 key={m.id}
                 onClick={() => setSelected(m.id)}
-                className="internops-modal-panel bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 p-5 cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition"
+                className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 p-5 cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition"
               >
                 <div className="flex items-center gap-3 mb-4">
                   <Avatar m={m} size="w-12 h-12" />
@@ -1729,7 +1820,7 @@ export default function Team() {
                     </div>
 
                     <span
-                      className={`inline-flex whitespace-nowrap px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                      className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-bold whitespace-nowrap ${
                         ROLE_BADGE[m.role] || ROLE_BADGE.INTERN
                       }`}
                     >
@@ -1752,7 +1843,7 @@ export default function Team() {
                   </span>
 
                   <span>
-                    <Stars value={m.avg_rating} />
+                    <RatingWithBadge value={m.rating ?? m.avg_rating} />
                   </span>
 
                   <span>
