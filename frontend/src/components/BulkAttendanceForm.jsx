@@ -1,25 +1,32 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import api from '../lib/axios';
-import { Card, Btn, Input } from './ui';
+import { Card, Btn, Input, ConfirmationModal } from './ui';
 import CustomSelect from './CustomSelect';
 import CustomDatePicker from './CustomDatePicker';
 
-export default function BulkAttendanceForm() {
+export default function BulkAttendanceForm({
+  roster,
+  departmentId: propDeptId,
+}) {
   const queryClient = useQueryClient();
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [status, setStatus] = useState('PRESENT');
   const [remarks, setRemarks] = useState('');
   const [selectedUsers, setSelectedUsers] = useState([]);
-  const [departmentId, setDepartmentId] = useState('');
+  const [departmentId, setDepartmentId] = useState(propDeptId || '');
   const [memberSearch, setMemberSearch] = useState('');
   const [fillMissing, setFillMissing] = useState(false);
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
+  const [pendingEntries, setPendingEntries] = useState(null);
+
+  const FILL_CONFIRM_THRESHOLD = 10;
 
   const { data: departments = [] } = useQuery({
     queryKey: ['departments'],
     queryFn: () => api.get('/departments').then((res) => res.data),
+    enabled: !roster,
   });
 
   const { data: reports = [], isLoading: loadingReports } = useQuery({
@@ -30,6 +37,7 @@ export default function BulkAttendanceForm() {
           params: { department_id: departmentId || undefined },
         })
         .then((res) => res.data),
+    enabled: !roster,
   });
 
   const bulkMutation = useMutation({
@@ -46,7 +54,8 @@ export default function BulkAttendanceForm() {
     onError: (err) => setError(err.response?.data?.error || 'Bulk mark failed'),
   });
 
-  const team = (reports ?? []).filter((u) =>
+  const effectiveReports = roster || reports;
+  const team = (effectiveReports ?? []).filter((u) =>
     (u.full_name || u.email)
       .toLowerCase()
       .includes(memberSearch.trim().toLowerCase())
@@ -113,6 +122,12 @@ export default function BulkAttendanceForm() {
           remarks: '',
         });
       }
+
+      // Show confirmation if auto-filling more than threshold
+      if (others.length > FILL_CONFIRM_THRESHOLD) {
+        setPendingEntries(entries);
+        return;
+      }
     }
 
     bulkMutation.mutate({ entries });
@@ -120,6 +135,18 @@ export default function BulkAttendanceForm() {
 
   return (
     <Card className="p-6 md:p-7 mb-6 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
+      <ConfirmationModal
+        open={!!pendingEntries}
+        title="Confirm Bulk Mark"
+        message={`This will mark ${pendingEntries?.length ?? 0} members in total (including ${(pendingEntries?.length ?? 0) - selectedUsers.length} auto-filled). Are you sure?`}
+        confirmText="Yes, mark all"
+        onConfirm={() => {
+          bulkMutation.mutate({ entries: pendingEntries });
+          setPendingEntries(null);
+        }}
+        onCancel={() => setPendingEntries(null)}
+        danger={true}
+      />
       <div className="flex items-center gap-3 mb-5 pb-4 border-b border-slate-200 dark:border-slate-700">
         <div className="w-11 h-11 rounded-2xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-300 flex items-center justify-center border border-blue-100 dark:border-blue-900/60">
           <span className="text-lg font-extrabold">✓</span>
@@ -170,20 +197,23 @@ export default function BulkAttendanceForm() {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-            <CustomSelect
-              value={departmentId}
-              onChange={handleDepartmentChange}
-              options={departmentOptions}
-              placeholder="All departments"
-              disabled={bulkMutation.isPending}
-              className="w-full"
-            />
+            {!roster && (
+              <CustomSelect
+                value={departmentId}
+                onChange={handleDepartmentChange}
+                options={departmentOptions}
+                placeholder="All departments"
+                disabled={bulkMutation.isPending}
+                className="w-full"
+              />
+            )}
 
             <Input
               placeholder="Search members..."
               value={memberSearch}
               onChange={(e) => setMemberSearch(e.target.value)}
               disabled={bulkMutation.isPending}
+              className={roster ? 'col-span-1 sm:col-span-2' : ''}
             />
           </div>
 

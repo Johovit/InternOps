@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import {
   ExternalLink,
@@ -21,10 +22,28 @@ import {
   useDeleteTemplate,
   useSeedTemplates,
 } from '../../hooks/useCertificates';
-import useBodyScrollLock from '../../hooks/useBodyScrollLock';
 
-export default function CanvaTemplates() {
+function colorsFor(template) {
+  return template.colorScheme || template.template_data?.colorScheme;
+}
+
+function CanvaTemplates() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [showCreateModal, setShowCreateModal] = useState(false);
+  useEffect(() => {
+    const success = searchParams.get('success');
+    const error = searchParams.get('error');
+
+    if (success === 'true') {
+      alert('Canva connected successfully!');
+      setSearchParams({});
+    }
+
+    if (error) {
+      alert(`Canva connection failed: ${error}`);
+      setSearchParams({});
+    }
+  }, [searchParams, setSearchParams]);
   const [newTemplate, setNewTemplate] = useState({
     name: '',
     description: '',
@@ -38,7 +57,14 @@ export default function CanvaTemplates() {
     return () => document.removeEventListener('keydown', handleKey);
   }, [showCreateModal]);
 
-  useBodyScrollLock(showCreateModal);
+  useEffect(() => {
+    if (!showCreateModal) return;
+    const original = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = original;
+    };
+  }, [showCreateModal]);
 
   const { data: canvaStatusResp, isLoading: statusLoading } = useCanvaStatus();
   const canvaStatus = canvaStatusResp?.data || {};
@@ -81,19 +107,7 @@ export default function CanvaTemplates() {
   const handleCreateTemplate = async (e) => {
     e.preventDefault();
     try {
-      const payload = {
-        name: newTemplate.name,
-        description: newTemplate.description,
-        template_data: {
-          background: newTemplate.colorScheme[0] || '#3B82F6',
-          accent: newTemplate.colorScheme[1] || '#10B981',
-          text: newTemplate.colorScheme[2] || '#F59E0B',
-          // If you want to keep the full array for other uses, add:
-          // colors: newTemplate.colorScheme
-        },
-        // thumbnail_url and canva_design_id are not used for manual creation
-      };
-      await createMutation.mutateAsync(payload);
+      await createMutation.mutateAsync(newTemplate);
       setShowCreateModal(false);
       setNewTemplate({
         name: '',
@@ -119,7 +133,7 @@ export default function CanvaTemplates() {
 
   const handleSeedDefaults = async () => {
     try {
-      await seedMutation.mutateAsync();
+      await seedMutation.mutateAsync({});
       refetchTemplates();
     } catch (error) {
       console.error('Failed to seed templates:', error);
@@ -172,7 +186,7 @@ export default function CanvaTemplates() {
               {statusLoading ? (
                 <Spinner size="sm" />
               ) : (
-                <Badge color={isConnected ? 'green' : 'red'}>
+                <Badge variant={isConnected ? 'success' : 'danger'}>
                   {isConnected ? (
                     <span className="flex items-center gap-1">
                       <Check className="w-3 h-3" />
@@ -292,16 +306,10 @@ export default function CanvaTemplates() {
               <button
                 onClick={handleSeedDefaults}
                 disabled={seedMutation.isPending}
-                className="flex items-center gap-2 px-4 py-2 text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center gap-2 px-4 py-2 text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
               >
-                {seedMutation.isPending ? (
-                  <Spinner size="sm" />
-                ) : (
-                  <Palette className="w-4 h-4" />
-                )}
-                {seedMutation.isPending
-                  ? 'Seeding Templates...'
-                  : 'Seed Default Templates'}
+                <Palette className="w-4 h-4" />
+                Seed Default Templates
               </button>
               <button
                 onClick={() => setShowCreateModal(true)}
@@ -351,28 +359,18 @@ export default function CanvaTemplates() {
 
                     {/* Color Scheme Preview */}
                     <div className="flex items-center gap-1">
-                      {(() => {
-                        const colors = template.template_data
-                          ? [
-                              template.template_data.background,
-                              template.template_data.accent,
-                              template.template_data.text,
-                            ].filter(Boolean)
-                          : [];
-                        if (colors.length === 0) return null;
-                        return colors
-                          .slice(0, 5)
-                          .map((color, index) => (
-                            <div
-                              key={index}
-                              className="w-6 h-6 rounded-full border-2 border-white dark:border-gray-900 shadow-sm"
-                              style={{ backgroundColor: color }}
-                            />
-                          ));
-                      })()}
-                      {template.colorScheme?.length > 5 && (
+                      {colorsFor(template)
+                        ?.slice(0, 5)
+                        .map((color, index) => (
+                          <div
+                            key={index}
+                            className="w-6 h-6 rounded-full border-2 border-white dark:border-gray-900 shadow-sm"
+                            style={{ backgroundColor: color }}
+                          />
+                        ))}
+                      {colorsFor(template)?.length > 5 && (
                         <span className="text-xs text-gray-500 dark:text-gray-400 ml-1">
-                          +{template.colorScheme.length - 5}
+                          +{colorsFor(template).length - 5}
                         </span>
                       )}
                     </div>
@@ -533,3 +531,5 @@ export default function CanvaTemplates() {
     </div>
   );
 }
+
+export default CanvaTemplates;

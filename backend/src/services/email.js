@@ -1,6 +1,7 @@
-﻿const nodemailer = require('nodemailer');
+const nodemailer = require('nodemailer');
 const config = require('../config');
 const pool = require('../config/db');
+const logger = require('../logger');
 const { getRedisClient } = require('../config/redis');
 const path = require('path');
 const fs = require('fs');
@@ -18,6 +19,26 @@ function escapeHtml(value) {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 }
+
+// Periodically prune stale rate-limit entries to prevent unbounded memory growth
+const RATE_LIMIT_PRUNE_INTERVAL_MS = 5 * 60 * 1000; // every 5 minutes
+function pruneRateLimitMap() {
+  const windowMs = config.email.rateLimitWindowMs || 60000;
+  const now = Date.now();
+  for (const [key, timestamps] of rateLimitMap.entries()) {
+    const fresh = timestamps.filter((t) => now - t < windowMs);
+    if (fresh.length === 0) {
+      rateLimitMap.delete(key);
+    } else {
+      rateLimitMap.set(key, fresh);
+    }
+  }
+}
+const rateLimitPruneTimer = setInterval(
+  pruneRateLimitMap,
+  RATE_LIMIT_PRUNE_INTERVAL_MS
+);
+rateLimitPruneTimer.unref();
 
 class EmailService {
   constructor() {
@@ -50,7 +71,7 @@ class EmailService {
       config.email.pass !== 'your-smtp-password' &&
       !config.email.pass.startsWith('your-');
     if (!config.email.host || !hasValidCreds) {
-      console.warn('[Email] SMTP not configured – using console fallback');
+      logger.warn('[Email] SMTP not configured-using console fallback');
       return null;
     }
     this.transporter = nodemailer.createTransport({
@@ -156,7 +177,7 @@ class EmailService {
     };
     const transporter = this.getTransporter();
     if (!transporter) {
-      console.log(`[Email] Placeholder -> To: ${to}, Subject: "${subject}"`);
+      logger.info(`[Email] Placeholder -> To: ${to}, Subject: "${subject}"`);
       metrics.sent++;
       return {
         messageId: 'console-' + Date.now(),
@@ -184,7 +205,7 @@ class EmailService {
         return info;
       } catch (err) {
         lastError = err;
-        console.error(
+        logger.error(
           `[Email] Attempt ${attempt + 1}/${maxRetries + 1} failed for ${to}: ${err.message}`
         );
         if (err.responseCode >= 500 || /55[0135]/.test(err.message)) {
@@ -196,14 +217,14 @@ class EmailService {
     }
 
     metrics.failed++;
-    console.error(
+    logger.error(
       `[Email] All attempts failed for ${to}: ${lastError?.message}`
     );
     throw lastError || new Error(`Failed to send email to ${to}`);
   }
 
   async sendPasswordReset(email, resetToken) {
-    const resetLink = `${process.env.APP_URL || 'http://localhost:5173'}/reset-password#token=${encodeURIComponent(resetToken)}`;
+    const resetLink = `${config.appUrl}/reset-password#token=${encodeURIComponent(resetToken)}`;
     return this.send({
       to: email,
       subject: 'InternOps - Password Reset Request',
@@ -213,7 +234,7 @@ class EmailService {
   }
 
   async sendAccountVerification(email, verificationToken) {
-    const verifyLink = `${process.env.APP_URL || 'http://localhost:5173'}/verify-email?token=${verificationToken}`;
+    const verifyLink = `${config.appUrl}/verify-email?token=${verificationToken}`;
     return this.send({
       to: email,
       subject: 'InternOps - Verify Your Email',
@@ -251,14 +272,18 @@ class EmailService {
   }
 
   async _recordBounces(addresses) {
-    try {
-      await pool.query('INSERT INTO bounced_emails (email) VALUES ($1)', [
-        addresses,
-      ]);
-    } catch {
-      // fallback to in-memory bounce list when DB is unavailable
+    const list = Array.isArray(addresses) ? addresses : [addresses];
+    for (const email of list) {
+      try {
+        await pool.query(
+          'INSERT INTO bounced_emails (email) VALUES ($1) ON CONFLICT DO NOTHING',
+          [email]
+        );
+      } catch {
+        // fallback to in-memory bounce list when DB is unavailable
+      }
+      bounceList.add(email);
     }
-    addresses.forEach((address) => bounceList.add(address));
   }
 
   _clearBounceList() {

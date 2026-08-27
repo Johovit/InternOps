@@ -42,6 +42,7 @@ db-test.js
 fix_async_done.js
 *.log
 *.err
+*.error
 *-report.txt
 
 # Docker volumes
@@ -59,5 +60,7 @@ scripts/backup-config.sh
 
 # Backup temp directory
 /tmp/internops-backup/
-output.txt
-test-output.txt
+
+# Graphify output directory (local development only)
+graphify-out/
+

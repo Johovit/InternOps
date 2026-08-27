@@ -4,6 +4,7 @@ const {
 const auth = require('../../middleware/auth');
 const rbac = require('../../middleware/rbac');
 const ownership = require('../../middleware/ownership');
+const requireFreshRole = require('../../middleware/requireFreshRole');
 const repo = require('./repository');
 const { createAuditLog, extractRequestInfo } = require('../../utils/audit');
 const { toSchema } = require('../../utils/schemaHelper');
@@ -197,14 +198,14 @@ async function routes(fastify) {
         ...data,
         manager_id: managerId,
       });
-      await createAuditLog({
+      req.auditOnResponse = {
         userId: req.user.id,
         action: 'MEMBER_CREATED',
         resourceType: 'user',
         resourceId: member.id,
         newValue: { email: member.email, role: member.role },
         ...extractRequestInfo(req),
-      });
+      };
       return reply.status(201).send(member);
     }
   );
@@ -258,7 +259,7 @@ async function routes(fastify) {
       const before = await repo.getMemberById(req.params.id);
       if (!before) return reply.status(404).send({ error: 'Member not found' });
       const after = await repo.updateMember(req.params.id, data);
-      await createAuditLog({
+      req.auditOnResponse = {
         userId: req.user.id,
         action: 'MEMBER_DETAILS_UPDATED',
         resourceType: 'user',
@@ -266,7 +267,7 @@ async function routes(fastify) {
         oldValue: before,
         newValue: after,
         ...extractRequestInfo(req),
-      });
+      };
       return after;
     }
   );
@@ -289,13 +290,13 @@ async function routes(fastify) {
         .parse(req.body);
       const member = await repo.setMemberStatus(req.params.id, suspended);
       if (!member) return reply.status(404).send({ error: 'Member not found' });
-      await createAuditLog({
+      req.auditOnResponse = {
         userId: req.user.id,
         action: suspended ? 'MEMBER_SUSPENDED' : 'MEMBER_ACTIVATED',
         resourceType: 'user',
         resourceId: req.params.id,
         ...extractRequestInfo(req),
-      });
+      };
       return member;
     }
   );
@@ -304,7 +305,13 @@ async function routes(fastify) {
   fastify.patch(
     '/members/:id/role',
     {
-      preHandler: [auth, rbac(...MANAGER_ROLES), ownership('id'), sanitize],
+      preHandler: [
+        auth,
+        rbac(...MANAGER_ROLES),
+        requireFreshRole,
+        ownership('id'),
+        sanitize,
+      ],
       schema: {
         tags: ['Team'],
         description: 'Change member role',
@@ -352,7 +359,7 @@ async function routes(fastify) {
 
       try {
         const after = await repo.updateMemberRole(req.params.id, role);
-        await createAuditLog({
+        req.auditOnResponse = {
           userId: req.user.id,
           action: 'MEMBER_ROLE_CHANGED',
           resourceType: 'user',
@@ -360,7 +367,7 @@ async function routes(fastify) {
           oldValue: { role: before.role },
           newValue: { role: after.role },
           ...extractRequestInfo(req),
-        });
+        };
         return after;
       } catch (err) {
         if (
@@ -378,7 +385,13 @@ async function routes(fastify) {
   fastify.patch(
     '/members/:id/manager',
     {
-      preHandler: [auth, rbac(...MANAGER_ROLES), ownership('id'), sanitize],
+      preHandler: [
+        auth,
+        rbac(...MANAGER_ROLES),
+        requireFreshRole,
+        ownership('id'),
+        sanitize,
+      ],
       schema: {
         tags: ['Team'],
         description: 'Change member manager',
@@ -457,6 +470,58 @@ async function routes(fastify) {
         }
         throw err;
       }
+    }
+  );
+
+  // Reset password of a member (within hierarchy).
+  fastify.patch(
+    '/members/:id/password',
+    {
+      preHandler: [auth, rbac(...MANAGER_ROLES), ownership('id'), sanitize],
+      schema: {
+        tags: ['Team'],
+        description: 'Update member password',
+        params: { type: 'object', properties: { id: { type: 'string' } } },
+        body: {
+          type: 'object',
+          required: ['password'],
+          properties: {
+            password: { type: 'string', minLength: 8 },
+          },
+        },
+      },
+    },
+    async (req, reply) => {
+      const { password } = z
+        .object({ password: z.string().min(8) })
+        .parse(req.body);
+
+      const before = await repo.getMemberById(req.params.id);
+      if (!before) return reply.status(404).send({ error: 'Member not found' });
+
+      // Prevent changing own password here
+      if (req.params.id === req.user.id) {
+        return reply.status(400).send({
+          error:
+            'Please use the profile settings page to change your own password.',
+        });
+      }
+
+      const argon2 = require('argon2');
+      const hash = await argon2.hash(password);
+
+      const authRepo = require('../auth/repository');
+      await authRepo.updatePassword(req.params.id, hash);
+
+      await createAuditLog({
+        userId: req.user.id,
+        action: 'MEMBER_PASSWORD_CHANGED',
+        resourceType: 'user',
+        resourceId: req.params.id,
+        ...extractRequestInfo(req),
+      });
+
+      return { message: 'Password updated successfully' };
     }
   );
 }

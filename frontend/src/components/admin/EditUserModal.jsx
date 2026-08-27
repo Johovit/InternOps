@@ -15,7 +15,6 @@ const ROLE_OPTIONS = [
 
 export default function EditUserModal({ open, user, onClose }) {
   const queryClient = useQueryClient();
-
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [role, setRole] = useState('');
@@ -34,7 +33,6 @@ export default function EditUserModal({ open, user, onClose }) {
     setManagerId(user.manager_id || '');
     setError('');
     setSuccessMsg('');
-
     document.body.classList.add('modal-open');
 
     return () => document.body.classList.remove('modal-open');
@@ -73,35 +71,14 @@ export default function EditUserModal({ open, user, onClose }) {
 
   const managerOptions = useMemo(() => {
     let managers = [];
-
-    if (role === 'INTERN') {
-      managers = [...captains, ...tls];
-    }
-
-    if (role === 'CAPTAIN') {
-      managers = [...tls, ...seniorTls];
-    }
-
-    if (role === 'TL') {
-      managers = seniorTls;
-    }
+    if (role === 'INTERN') managers = [...captains, ...tls];
+    if (role === 'CAPTAIN') managers = [...tls, ...seniorTls];
+    if (role === 'TL') managers = seniorTls;
 
     return managers.filter((candidate) => candidate.id !== user?.id);
   }, [captains, role, seniorTls, tls, user?.id]);
 
   const showManagerSelection = ['INTERN', 'CAPTAIN', 'TL'].includes(role);
-
-  /*
-   * Reset manager selection whenever the role changes.
-   *
-   * This prevents a stale managerId from reappearing when a user
-   * changes from a manager-requiring role to a non-manager role
-   * and then changes back to a manager-requiring role.
-   */
-  const handleRoleChange = (newRole) => {
-    setRole(newRole);
-    setManagerId('');
-  };
 
   const departmentOptions = [
     { value: '', label: 'No department' },
@@ -122,28 +99,19 @@ export default function EditUserModal({ open, user, onClose }) {
   const updateMutation = useMutation({
     mutationFn: (payload) =>
       api.patch(`/users/${user.id}`, payload).then((res) => res.data),
-
     onSuccess: async () => {
       setError('');
       setSuccessMsg('User account updated successfully.');
-
-      await queryClient.invalidateQueries({
-        queryKey: ['adminUsers'],
-      });
-
-      await queryClient.invalidateQueries({
-        queryKey: ['usersByRole'],
-      });
+      await queryClient.invalidateQueries({ queryKey: ['adminUsers'] });
+      await queryClient.invalidateQueries({ queryKey: ['usersByRole'] });
 
       setTimeout(() => {
         setSuccessMsg('');
         onClose();
       }, 900);
     },
-
     onError: (err) => {
       setSuccessMsg('');
-
       setError(
         err.response?.data?.error ||
           err.response?.data?.message ||
@@ -154,7 +122,6 @@ export default function EditUserModal({ open, user, onClose }) {
 
   const handleClose = () => {
     if (updateMutation.isPending) return;
-
     setError('');
     setSuccessMsg('');
     onClose();
@@ -163,17 +130,9 @@ export default function EditUserModal({ open, user, onClose }) {
   const handleSubmit = (event) => {
     event.preventDefault();
 
-    if (!fullName.trim()) {
-      return setError('Full Name is required');
-    }
-
-    if (!email.trim()) {
-      return setError('Email is required');
-    }
-
-    if (!role) {
-      return setError('Role is required');
-    }
+    if (!fullName.trim()) return setError('Full Name is required');
+    if (!email.trim()) return setError('Email is required');
+    if (!role) return setError('Role is required');
 
     updateMutation.mutate({
       full_name: fullName.trim(),
@@ -188,7 +147,6 @@ export default function EditUserModal({ open, user, onClose }) {
 
   const inputClass =
     'w-full pl-11 pr-4 py-3 rounded-2xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-400/30 outline-none transition text-sm disabled:opacity-60';
-
   const labelClass =
     'block text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2';
 
@@ -206,10 +164,8 @@ export default function EditUserModal({ open, user, onClose }) {
             <div className="w-11 h-11 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-900/60 flex items-center justify-center">
               <Pencil className="w-5 h-5" />
             </div>
-
             <div>
               <h2 className="text-xl font-extrabold">Edit User</h2>
-
               <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
                 Update account and reporting details
               </p>
@@ -244,10 +200,8 @@ export default function EditUserModal({ open, user, onClose }) {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className={labelClass}>Full Name</label>
-
                 <div className="relative">
                   <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-
                   <input
                     type="text"
                     required
@@ -261,10 +215,8 @@ export default function EditUserModal({ open, user, onClose }) {
 
               <div>
                 <label className={labelClass}>Email Address</label>
-
                 <div className="relative">
                   <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-
                   <input
                     type="email"
                     required
@@ -278,13 +230,14 @@ export default function EditUserModal({ open, user, onClose }) {
 
               <div>
                 <label className={labelClass}>User Role</label>
-
                 <div className="relative">
                   <Layers className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 z-10" />
-
                   <CustomSelect
                     value={role}
-                    onChange={handleRoleChange}
+                    onChange={(value) => {
+                      setRole(value);
+                      setManagerId('');
+                    }}
                     options={ROLE_OPTIONS}
                     disabled={updateMutation.isPending}
                     className="[&>button]:pl-11"
@@ -294,10 +247,8 @@ export default function EditUserModal({ open, user, onClose }) {
 
               <div>
                 <label className={labelClass}>Department</label>
-
                 <div className="relative">
                   <HelpCircle className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 z-10" />
-
                   <CustomSelect
                     value={departmentId}
                     onChange={setDepartmentId}
@@ -311,7 +262,6 @@ export default function EditUserModal({ open, user, onClose }) {
               {showManagerSelection && (
                 <div className="md:col-span-2">
                   <label className={labelClass}>Assign Manager</label>
-
                   <CustomSelect
                     value={managerId}
                     onChange={setManagerId}
@@ -319,7 +269,6 @@ export default function EditUserModal({ open, user, onClose }) {
                     disabled={updateMutation.isPending}
                     className="w-full"
                   />
-
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
                     Manager choices follow the platform role hierarchy.
                   </p>
@@ -337,7 +286,6 @@ export default function EditUserModal({ open, user, onClose }) {
             >
               Cancel
             </button>
-
             <button
               type="submit"
               disabled={updateMutation.isPending}

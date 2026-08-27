@@ -37,13 +37,13 @@ async function forgotPassword(email, requestInfo) {
   }
 
   await repo.recordResetAttempt(email);
-  await createAuditLog({
+  return {
     userId: user.id,
     action: 'PASSWORD_RESET_REQUESTED',
     resourceType: 'user',
     resourceId: user.id,
     ...requestInfo,
-  });
+  };
 }
 
 async function resetPassword(token, newPassword, requestInfo) {
