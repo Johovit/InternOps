@@ -93,7 +93,10 @@ jobs:
         run: npm run lint
 
       - name: Run Frontend Tests
-        run: cd frontend && npm run test
+        run: |
+          cd frontend
+          npm ci --include=optional --no-audit --no-fund
+          npm run test
 
       - name: Build frontend
         run: cd frontend && npm run build
