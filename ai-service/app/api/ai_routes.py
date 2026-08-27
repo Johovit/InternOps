@@ -34,6 +34,8 @@ from app.models.ai import (
     ProviderResult,
     UsageResponse,
     GenerationRequest,
+    ImageGenerationRequest,
+    ImageGenerationResponse,
 )
 from app.core.cache import cache_key, get_or_set
 from app.providers import ai_orchestrator
@@ -204,6 +206,56 @@ async def generate_text(request: GenerationRequest):
         content=content,
     )
 
+# ---------------------------------------------------------------------------
+# POST /ai/generate-image
+# ---------------------------------------------------------------------------
+@router.post(
+    "/generate-image",
+    summary="Generate an image from an assignment topic description",
+    response_model=ImageGenerationResponse,
+    dependencies=[Depends(require_roles("ADMIN", "SENIOR_TL", "TL"))],
+)
+async def generate_image(
+    body: ImageGenerationRequest,
+    current_user: User = Depends(get_current_user),
+    _rate_limited: None = Depends(enforce_rate_limit),
+):
+    usage = await get_today_usage(current_user.id)
+    if usage >= DAILY_AI_LIMIT:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Daily AI usage limit exceeded",
+        )
+
+    try:
+        image_base64, used_provider = await ai_orchestrator.generate_image_with_fallback(
+            body.prompt
+        )
+        await increment_usage(current_user.id)
+        return ImageGenerationResponse(
+            provider=used_provider,
+            image_base64=image_base64,
+        )
+    except ProviderRateLimitError:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="AI provider rate limit exceeded",
+        )
+    except ProviderAPIError as error:
+        if error.status_code == 413:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail="AI provider response too large",
+            )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="AI provider service unavailable",
+        )
+    except AIProviderError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Image generation service unavailable",
+        )
 
 # ---------------------------------------------------------------------------
 # GET /ai/health
