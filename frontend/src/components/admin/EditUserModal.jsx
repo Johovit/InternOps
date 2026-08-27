@@ -15,6 +15,7 @@ const ROLE_OPTIONS = [
 
 export default function EditUserModal({ open, user, onClose }) {
   const queryClient = useQueryClient();
+
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [role, setRole] = useState('');
@@ -33,6 +34,7 @@ export default function EditUserModal({ open, user, onClose }) {
     setManagerId(user.manager_id || '');
     setError('');
     setSuccessMsg('');
+
     document.body.classList.add('modal-open');
 
     return () => document.body.classList.remove('modal-open');
@@ -72,18 +74,30 @@ export default function EditUserModal({ open, user, onClose }) {
   const managerOptions = useMemo(() => {
     let managers = [];
 
-    if (role === 'INTERN') managers = [...captains, ...tls];
-    if (role === 'CAPTAIN') managers = [...tls, ...seniorTls];
-    if (role === 'TL') managers = seniorTls;
+    if (role === 'INTERN') {
+      managers = [...captains, ...tls];
+    }
+
+    if (role === 'CAPTAIN') {
+      managers = [...tls, ...seniorTls];
+    }
+
+    if (role === 'TL') {
+      managers = seniorTls;
+    }
 
     return managers.filter((candidate) => candidate.id !== user?.id);
   }, [captains, role, seniorTls, tls, user?.id]);
 
   const showManagerSelection = ['INTERN', 'CAPTAIN', 'TL'].includes(role);
 
-  // Reset manager selection whenever the user's role changes.
-  // This prevents a stale managerId from reappearing if the role
-  // is changed away from and then back to a manager-requiring role.
+  /*
+   * Reset manager selection whenever the role changes.
+   *
+   * This prevents a stale managerId from reappearing when a user
+   * changes from a manager-requiring role to a non-manager role
+   * and then changes back to a manager-requiring role.
+   */
   const handleRoleChange = (newRole) => {
     setRole(newRole);
     setManagerId('');
@@ -108,19 +122,28 @@ export default function EditUserModal({ open, user, onClose }) {
   const updateMutation = useMutation({
     mutationFn: (payload) =>
       api.patch(`/users/${user.id}`, payload).then((res) => res.data),
+
     onSuccess: async () => {
       setError('');
       setSuccessMsg('User account updated successfully.');
-      await queryClient.invalidateQueries({ queryKey: ['adminUsers'] });
-      await queryClient.invalidateQueries({ queryKey: ['usersByRole'] });
+
+      await queryClient.invalidateQueries({
+        queryKey: ['adminUsers'],
+      });
+
+      await queryClient.invalidateQueries({
+        queryKey: ['usersByRole'],
+      });
 
       setTimeout(() => {
         setSuccessMsg('');
         onClose();
       }, 900);
     },
+
     onError: (err) => {
       setSuccessMsg('');
+
       setError(
         err.response?.data?.error ||
           err.response?.data?.message ||
@@ -131,6 +154,7 @@ export default function EditUserModal({ open, user, onClose }) {
 
   const handleClose = () => {
     if (updateMutation.isPending) return;
+
     setError('');
     setSuccessMsg('');
     onClose();
@@ -139,9 +163,17 @@ export default function EditUserModal({ open, user, onClose }) {
   const handleSubmit = (event) => {
     event.preventDefault();
 
-    if (!fullName.trim()) return setError('Full Name is required');
-    if (!email.trim()) return setError('Email is required');
-    if (!role) return setError('Role is required');
+    if (!fullName.trim()) {
+      return setError('Full Name is required');
+    }
+
+    if (!email.trim()) {
+      return setError('Email is required');
+    }
+
+    if (!role) {
+      return setError('Role is required');
+    }
 
     updateMutation.mutate({
       full_name: fullName.trim(),
@@ -177,6 +209,7 @@ export default function EditUserModal({ open, user, onClose }) {
 
             <div>
               <h2 className="text-xl font-extrabold">Edit User</h2>
+
               <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
                 Update account and reporting details
               </p>
