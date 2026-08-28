@@ -18,7 +18,6 @@ import NoticeBoard from '../components/NoticeBoard';
 
 const UPTOSKILLS_LOGO = '/UptoSkills.webp';
 
-
 // Category label colours
 const CATEGORY_STYLES = {
   REMINDER: 'text-indigo-200',
