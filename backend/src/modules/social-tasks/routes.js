@@ -8,9 +8,19 @@ const { extractRequestInfo } = require('../../utils/audit');
 const { z } = require('zod');
 const emailService = require('../../services/email');
 const { runWithConcurrencyLimit } = require('../../utils/concurrency');
+const aiDraftService = require('./ai-draft.service');
+const aiRepo = require('../ai/repository');
+const config = require('../../config');
 
 const EMAIL_BATCH_SIZE = 500;
 const EMAIL_CONCURRENCY = 10;
+const AI_TASK_DRAFT_RATE_LIMIT = Number(
+  process.env.AI_TASK_DRAFT_RATE_LIMIT_PER_MIN || 5
+);
+
+const aiDraftSchema = z.object({
+  brief: z.string().trim().min(3).max(500),
+});
 const createTaskSchema = z.object({
   title: z.string().min(1).max(255),
   description: z.string().max(2000).optional(),
@@ -177,6 +187,75 @@ module.exports = async function socialTasksRoutes(fastify) {
       void notifyAllInternsAsync(task, req.log);
 
       return task;
+    }
+  );
+
+  // Draft a social task from a short brief using AI (Admin / Senior TL).
+  // The draft is never persisted or auto-published — it is only returned
+  // for the creator to review, edit, and explicitly submit via POST /.
+  fastify.post(
+    '/ai-draft',
+    {
+      schema: {
+        tags: ['Tasks'],
+        description: 'Generate a draft task from a short brief using AI',
+      },
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL'), sanitize],
+      config: {
+        rateLimit: {
+          max: AI_TASK_DRAFT_RATE_LIMIT,
+          timeWindow: '1 minute',
+          keyGenerator: (req) => req.user?.id || req.ip,
+        },
+      },
+    },
+    async (req, reply) => {
+      const parsed = aiDraftSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'Validation failed',
+          details: parsed.error.issues,
+        });
+      }
+
+      try {
+        // Per-creator daily cap on top of the per-minute rate limit above,
+        // so a single creator can't run up the AI bill on their own.
+        const usageResult = await aiRepo.tryIncrementUsage(
+          req.user.id,
+          config.ai.dailyLimit
+        );
+
+        if (!usageResult) {
+          return reply.status(429).send({
+            error: 'Daily AI usage limit exceeded',
+          });
+        }
+
+        const draft = await aiDraftService.generateTaskDraft({
+          brief: parsed.data.brief,
+          creatorId: req.user.id,
+        });
+
+        return draft;
+      } catch (error) {
+        if (error.statusCode === 400) {
+          return reply.status(400).send({ error: error.message });
+        }
+        if (error.statusCode === 413) {
+          return reply.status(413).send({
+            error: 'AI provider response too large',
+          });
+        }
+
+        req.log.error(
+          { err: error.message, code: error.statusCode },
+          'AI task draft generation failed'
+        );
+        return reply.status(503).send({
+          error: 'AI drafting service unavailable',
+        });
+      }
     }
   );
 
