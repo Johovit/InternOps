@@ -1,3 +1,4 @@
+const argon2 = require('argon2');
 const { UnauthorizedError } = require('../../utils/errors');
 const repo = require('./repository');
 const {
@@ -15,6 +16,7 @@ const {
 const { isValidStep } = require('../../utils/hierarchy');
 const { sendVerificationEmail } = require('./verificationService');
 const { blacklistAccessToken } = require('../../config/redis');
+const { notifyAdmin } = require('../notifications/repository');
 
 const DUMMY_USER = {
   password_hash:
@@ -69,6 +71,7 @@ function publicUser(user) {
     email: user.email,
     role: user.role,
     full_name: user.full_name,
+    mustChangePassword: Boolean(user.must_change_password),
   };
 }
 
@@ -113,6 +116,11 @@ async function login(email, password, ip, userAgent) {
       }
     }
 
+    // Notify admins about account lockout (fire-and-forget)
+    notifyAdmin(
+      `🔒 Account Locked\nUser: ${email}\nIssue: Too many failed login attempts (${currentAttempts})\nTime: ${new Date().toLocaleString()}`
+    ).catch(() => {});
+
     throw new UnauthorizedError(
       'Account temporarily locked. Please try again later.'
     );
@@ -121,11 +129,16 @@ async function login(email, password, ip, userAgent) {
   const user = await repo.findByEmail(email);
 
   if (!user || user.suspended) {
-    const argon2 = require('argon2');
-
     await argon2.verify(DUMMY_HASH, password).catch(() => {});
-
     await recordLoginAttempt(email, ip, false).catch(() => {});
+
+    // Notify admins (fire-and-forget). Suspended users get a distinct message.
+    const issueType = user?.suspended
+      ? 'Account Suspended'
+      : 'Login Failed — User Not Found';
+    notifyAdmin(
+      `⚠️ User Issue: ${issueType}\nUser: ${email}\nTime: ${new Date().toLocaleString()}`
+    ).catch(() => {});
 
     throw new UnauthorizedError('Invalid credentials');
   }
@@ -134,6 +147,11 @@ async function login(email, password, ip, userAgent) {
 
   if (!valid) {
     await recordLoginAttempt(email, ip, false).catch(() => {});
+
+    // Notify admins about failed login (fire-and-forget)
+    notifyAdmin(
+      `⚠️ User Issue: Login Failed\nUser: ${email}\nIssue: Invalid password\nTime: ${new Date().toLocaleString()}`
+    ).catch(() => {});
 
     throw new UnauthorizedError('Invalid credentials');
   }

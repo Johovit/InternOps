@@ -79,7 +79,12 @@ describe('API error-path integration tests', () => {
   });
 
   it('returns 413 when an avatar upload exceeds the configured file limit', async () => {
-    const userId = '00000000-0000-4000-8000-000000000001';
+    const { rows } = await pool.query(
+      `SELECT id FROM users
+       WHERE role = 'ADMIN' AND suspended = FALSE AND deleted_at IS NULL
+       ORDER BY created_at ASC LIMIT 1`
+    );
+    const userId = rows[0].id;
     const token = jwt.sign(
       { id: userId, role: 'ADMIN', typ: 'access', jti: 'error-path-upload' },
       config.jwt.secret,
@@ -109,6 +114,7 @@ describe('API error-path integration tests', () => {
         authorization: `Bearer ${token}`,
         'x-csrf-token': csrfToken,
         'content-type': `multipart/form-data; boundary=${boundary}`,
+        origin: 'http://localhost:5173',
       },
       payload: multipartBody(boundary, 'too-large.png', pngWithOversizePayload),
     });

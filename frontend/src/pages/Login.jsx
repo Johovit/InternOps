@@ -1,11 +1,13 @@
 import { useState } from 'react';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
 import { Mail, Lock, Eye, EyeOff, Star, X, ExternalLink, Calendar, Link as LinkIcon } from 'lucide-react';
 import api from '../lib/axios';
 import useAuthStore from '../store/auth';
+import NoticeBoard from '../components/NoticeBoard';
 
 const UPTOSKILLS_LOGO = '/UptoSkills.webp';
+
 
 // Category label colours
 const CATEGORY_STYLES = {
@@ -181,7 +183,7 @@ export default function Login() {
       api.post('/auth/login', creds).then((res) => res.data),
     onSuccess: (data) => {
       setAuth({ accessToken: data.accessToken, user: data.user });
-      navigate('/');
+      navigate(data.user?.mustChangePassword ? '/profile' : '/');
     },
     onError: (err) => setError(err.response?.data?.error || 'Login failed'),
   });
@@ -203,17 +205,19 @@ export default function Login() {
   };
 
   return (
-    <div className="relative h-screen w-full overflow-hidden flex flex-col lg:flex-row bg-gradient-to-br from-slate-950 via-indigo-950 to-blue-950 text-white">
+    <div className="relative min-h-screen w-full flex flex-col lg:flex-row bg-gradient-to-br from-slate-950 via-indigo-950 to-blue-950 text-white">
       {/* Background Decor */}
-      <div
-        className="absolute inset-0 opacity-[0.08] pointer-events-none"
-        style={{
-          backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='100'%3E%3Cpath d='M28 66L0 50V16L28 0l28 16v34L28 66zm0 0v34M0 50l28 16M56 50L28 66M0 16l28 16M56 16L28 32' fill='none' stroke='%23ffffff' stroke-width='1'/%3E%3C/svg%3E")`,
-          backgroundSize: '56px 100px',
-        }}
-      />
-      <div className="absolute -top-28 -left-24 w-96 h-96 bg-indigo-500/25 rounded-full blur-3xl" />
-      <div className="absolute -bottom-32 -right-24 w-[30rem] h-[30rem] bg-blue-500/20 rounded-full blur-3xl" />
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div
+          className="absolute inset-0 opacity-[0.08]"
+          style={{
+            backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='100'%3E%3Cpath d='M28 66L0 50V16L28 0l28 16v34L28 66zm0 0v34M0 50l28 16M56 50L28 66M0 16l28 16M56 16L28 32' fill='none' stroke='%23ffffff' stroke-width='1'/%3E%3C/svg%3E")`,
+            backgroundSize: '56px 100px',
+          }}
+        />
+        <div className="absolute -top-28 -left-24 w-96 h-96 bg-indigo-500/25 rounded-full blur-3xl" />
+        <div className="absolute -bottom-32 -right-24 w-[30rem] h-[30rem] bg-blue-500/20 rounded-full blur-3xl" />
+      </div>
 
       {/* Left: Auth Form */}
       <div className="relative w-full lg:w-1/2 h-full flex flex-col justify-center items-center px-6 py-5 bg-black/10">
@@ -238,6 +242,7 @@ export default function Login() {
             <h2 className="text-2xl font-extrabold text-white mb-6">
               Welcome back
             </h2>
+
             {error && (
               <div
                 id="login-error"
@@ -249,39 +254,55 @@ export default function Login() {
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-xs font-extrabold uppercase text-white/65 mb-2">
+                <label
+                  htmlFor="email"
+                  className="block text-xs font-extrabold uppercase text-white/65 mb-2"
+                >
                   Email
                 </label>
+
                 <div className="relative">
                   <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/45" />
                   <input
+                    id="email"
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     disabled={loginMut.isPending}
                     required
+                    autoComplete="email"
+                    placeholder="Enter your email"
                     aria-describedby={error ? 'login-error' : undefined}
                     aria-invalid={!!error}
                     className="w-full pl-12 pr-4 py-3 rounded-2xl bg-white/10 border border-white/15 outline-none focus:ring-2 focus:ring-indigo-300/25 transition"
                   />
                 </div>
               </div>
+
               <div>
-                <label className="block text-xs font-extrabold uppercase text-white/65 mb-2">
+                <label
+                  htmlFor="password"
+                  className="block text-xs font-extrabold uppercase text-white/65 mb-2"
+                >
                   Password
                 </label>
+
                 <div className="relative">
                   <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/45" />
                   <input
+                    id="password"
                     type={show ? 'text' : 'password'}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     disabled={loginMut.isPending}
                     required
+                    autoComplete="current-password"
+                    placeholder="Enter your password"
                     aria-describedby={error ? 'login-error' : undefined}
                     aria-invalid={!!error}
                     className="w-full pl-12 pr-12 py-3 rounded-2xl bg-white/10 border border-white/15 outline-none focus:ring-2 focus:ring-indigo-300/25 transition"
                   />
+
                   <button
                     type="button"
                     onClick={() => setShow(!show)}
@@ -294,6 +315,7 @@ export default function Login() {
                     )}
                   </button>
                 </div>
+
                 <div className="flex justify-end">
                   <Link
                     to="/forgot-password"
@@ -303,6 +325,7 @@ export default function Login() {
                   </Link>
                 </div>
               </div>
+
               <button
                 type="submit"
                 disabled={loginMut.isPending}
@@ -312,6 +335,7 @@ export default function Login() {
               </button>
             </form>
           </div>
+
           <p className="text-center text-white/45 text-xs mt-4">
             © {new Date().getFullYear()} InternOps
           </p>
@@ -324,9 +348,11 @@ export default function Login() {
           <div className="inline-flex items-center gap-2 bg-indigo-400/10 text-indigo-200 border border-indigo-300/15 px-3 py-1.5 rounded-full text-xs font-extrabold uppercase">
             <span>📢 InternOps Notice Board</span>
           </div>
+
           <h2 className="text-3xl font-extrabold text-white">
             Portal Announcements
           </h2>
+
           <div className="bg-white/[0.08] backdrop-blur-xl rounded-3xl border border-white/10 p-5 shadow-2xl">
             <NoticeList />
           </div>
