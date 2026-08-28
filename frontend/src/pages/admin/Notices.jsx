@@ -33,7 +33,17 @@ import {
 } from '../../components/ui';
 import CustomSelect from '../../components/CustomSelect';
 
-const CATEGORIES = ['GENERAL', 'REMINDER', 'ALERT', 'NEWS', 'INTERNSHIP', 'ANNOUNCEMENT', 'EVENT', 'IMPORTANT', 'DEADLINE'];
+const CATEGORIES = [
+  'GENERAL',
+  'REMINDER',
+  'ALERT',
+  'NEWS',
+  'INTERNSHIP',
+  'ANNOUNCEMENT',
+  'EVENT',
+  'IMPORTANT',
+  'DEADLINE',
+];
 
 const CATEGORY_STYLES = {
   GENERAL:
@@ -43,11 +53,16 @@ const CATEGORY_STYLES = {
   ALERT:
     'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-100 dark:border-rose-900/60',
   NEWS: 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-100 dark:border-emerald-900/60',
-  INTERNSHIP: 'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border-purple-100 dark:border-purple-900/60',
-  ANNOUNCEMENT: 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-100 dark:border-blue-900/60',
-  EVENT: 'bg-fuchsia-50 dark:bg-fuchsia-950/40 text-fuchsia-700 dark:text-fuchsia-300 border-fuchsia-100 dark:border-fuchsia-900/60',
-  IMPORTANT: 'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border-red-100 dark:border-red-900/60',
-  DEADLINE: 'bg-orange-50 dark:bg-orange-950/40 text-orange-700 dark:text-orange-300 border-orange-100 dark:border-orange-900/60',
+  INTERNSHIP:
+    'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border-purple-100 dark:border-purple-900/60',
+  ANNOUNCEMENT:
+    'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-100 dark:border-blue-900/60',
+  EVENT:
+    'bg-fuchsia-50 dark:bg-fuchsia-950/40 text-fuchsia-700 dark:text-fuchsia-300 border-fuchsia-100 dark:border-fuchsia-900/60',
+  IMPORTANT:
+    'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border-red-100 dark:border-red-900/60',
+  DEADLINE:
+    'bg-orange-50 dark:bg-orange-950/40 text-orange-700 dark:text-orange-300 border-orange-100 dark:border-orange-900/60',
 };
 
 const CATEGORY_META = {
@@ -55,8 +70,16 @@ const CATEGORY_META = {
   REMINDER: { Icon: Clock, color: 'text-amber-500', label: 'Reminder' },
   ALERT: { Icon: AlertTriangle, color: 'text-rose-500', label: 'Alert' },
   NEWS: { Icon: Newspaper, color: 'text-emerald-500', label: 'News' },
-  INTERNSHIP: { Icon: Briefcase, color: 'text-purple-500', label: 'Internship' },
-  ANNOUNCEMENT: { Icon: Megaphone, color: 'text-blue-500', label: 'Announcement' },
+  INTERNSHIP: {
+    Icon: Briefcase,
+    color: 'text-purple-500',
+    label: 'Internship',
+  },
+  ANNOUNCEMENT: {
+    Icon: Megaphone,
+    color: 'text-blue-500',
+    label: 'Announcement',
+  },
   EVENT: { Icon: CalendarDays, color: 'text-fuchsia-500', label: 'Event' },
   IMPORTANT: { Icon: FileWarning, color: 'text-red-500', label: 'Important' },
   DEADLINE: { Icon: Clock, color: 'text-orange-500', label: 'Deadline' },
@@ -95,8 +118,12 @@ function NoticeForm({
   const [content, setContent] = useState(initial.content ?? '');
   const [category, setCategory] = useState(initial.category ?? 'GENERAL');
   const [image_url, setImageUrl] = useState(initial.image_url ?? '');
-  const [action_button_text, setActionButtonText] = useState(initial.action_button_text ?? '');
-  const [action_button_link, setActionButtonLink] = useState(initial.action_button_link ?? '');
+  const [action_button_text, setActionButtonText] = useState(
+    initial.action_button_text ?? ''
+  );
+  const [action_button_link, setActionButtonLink] = useState(
+    initial.action_button_link ?? ''
+  );
   const [is_featured, setIsFeatured] = useState(initial.is_featured ?? false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
@@ -130,22 +157,44 @@ function NoticeForm({
   return (
     <div className="flex flex-col gap-3">
       {uploadError && (
-        <div className="text-sm text-red-500 p-2 bg-red-50 rounded-lg">{uploadError}</div>
+        <div className="text-sm text-red-500 p-2 bg-red-50 rounded-lg">
+          {uploadError}
+        </div>
       )}
-      
+
       <div className="flex items-center gap-4">
         {image_url && (
-          <img src={image_url} alt="Notice Preview" className="h-16 w-32 object-cover rounded-lg border border-slate-200 dark:border-slate-700" />
+          <img
+            src={image_url}
+            alt="Notice Preview"
+            className="h-16 w-32 object-cover rounded-lg border border-slate-200 dark:border-slate-700"
+          />
         )}
         <label className="flex items-center gap-2 px-3 py-2 border border-dashed border-slate-300 dark:border-slate-600 rounded-lg cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
-          {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4 text-slate-500" />}
+          {isUploading ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <Upload className="w-4 h-4 text-slate-500" />
+          )}
           <span className="text-sm text-slate-600 dark:text-slate-400">
             {image_url ? 'Change Image' : 'Upload Image (Optional)'}
           </span>
-          <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} disabled={isPending || isUploading} />
+          <input
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handleImageUpload}
+            disabled={isPending || isUploading}
+          />
         </label>
         {image_url && (
-          <button type="button" onClick={() => setImageUrl('')} className="text-rose-500 text-sm hover:underline">Remove</button>
+          <button
+            type="button"
+            onClick={() => setImageUrl('')}
+            className="text-rose-500 text-sm hover:underline"
+          >
+            Remove
+          </button>
         )}
       </div>
 
@@ -187,15 +236,19 @@ function NoticeForm({
       </div>
 
       <div className="flex items-center gap-2 ml-1 mb-2">
-        <input 
-          type="checkbox" 
-          id="is_featured" 
-          checked={is_featured} 
+        <input
+          type="checkbox"
+          id="is_featured"
+          checked={is_featured}
           onChange={(e) => setIsFeatured(e.target.checked)}
           className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
         />
-        <label htmlFor="is_featured" className="text-sm font-medium text-slate-700 dark:text-slate-300 flex items-center gap-1">
-          Mark as Featured <Star className="w-3 h-3 text-amber-500 fill-amber-500" />
+        <label
+          htmlFor="is_featured"
+          className="text-sm font-medium text-slate-700 dark:text-slate-300 flex items-center gap-1"
+        >
+          Mark as Featured{' '}
+          <Star className="w-3 h-3 text-amber-500 fill-amber-500" />
         </label>
       </div>
 
@@ -212,16 +265,18 @@ function NoticeForm({
         </div>
 
         <Btn
-          disabled={isPending || isUploading || !title.trim() || !content.trim()}
+          disabled={
+            isPending || isUploading || !title.trim() || !content.trim()
+          }
           onClick={() =>
-            onSubmit({ 
-              title: title.trim(), 
-              content: content.trim(), 
+            onSubmit({
+              title: title.trim(),
+              content: content.trim(),
               category,
               image_url: image_url || null,
               action_button_text: action_button_text || null,
               action_button_link: action_button_link || null,
-              is_featured 
+              is_featured,
             })
           }
           className="rounded-2xl"
@@ -431,8 +486,8 @@ export default function Notices() {
               ) : (
                 <div className="flex flex-col sm:flex-row items-start gap-4">
                   {n.image_url && (
-                    <img 
-                      src={n.image_url} 
+                    <img
+                      src={n.image_url}
                       alt={n.title}
                       className="w-full sm:w-32 h-32 sm:h-20 object-cover rounded-xl shrink-0 border border-slate-200 dark:border-slate-700"
                     />

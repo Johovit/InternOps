@@ -1,7 +1,17 @@
 import { useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
-import { Mail, Lock, Eye, EyeOff, Star, X, ExternalLink, Calendar, Link as LinkIcon } from 'lucide-react';
+import {
+  Mail,
+  Lock,
+  Eye,
+  EyeOff,
+  Star,
+  X,
+  ExternalLink,
+  Calendar,
+  Link as LinkIcon,
+} from 'lucide-react';
 import api from '../lib/axios';
 import useAuthStore from '../store/auth';
 
@@ -60,16 +70,16 @@ function NoticeList() {
     <>
       <div className="notice-scrollbar max-h-[500px] overflow-y-auto pr-2 space-y-4">
         {notices.map((notice) => (
-          <div 
-            key={notice.id} 
+          <div
+            key={notice.id}
             onClick={() => setSelectedNotice(notice)}
             className="group relative p-4 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20 transition-all cursor-pointer flex gap-4"
           >
             {notice.image_url && (
-              <img 
-                src={notice.image_url} 
-                alt="" 
-                className="w-16 h-16 rounded-xl object-cover shrink-0 opacity-80 group-hover:opacity-100 transition-opacity" 
+              <img
+                src={notice.image_url}
+                alt=""
+                className="w-16 h-16 rounded-xl object-cover shrink-0 opacity-80 group-hover:opacity-100 transition-opacity"
               />
             )}
             <div className="flex-1 min-w-0">
@@ -77,7 +87,9 @@ function NoticeList() {
                 {notice.is_featured && (
                   <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400 shrink-0" />
                 )}
-                <p className={`text-xs font-extrabold uppercase tracking-wider ${CATEGORY_STYLES[notice.category] ?? CATEGORY_STYLES.GENERAL}`}>
+                <p
+                  className={`text-xs font-extrabold uppercase tracking-wider ${CATEGORY_STYLES[notice.category] ?? CATEGORY_STYLES.GENERAL}`}
+                >
                   {notice.category}
                 </p>
               </div>
@@ -109,13 +121,17 @@ function NoticeList() {
             <div className="relative shrink-0">
               {selectedNotice.image_url ? (
                 <div className="w-full h-48 bg-slate-800 relative">
-                  <img src={selectedNotice.image_url} alt="" className="w-full h-full object-cover" />
+                  <img
+                    src={selectedNotice.image_url}
+                    alt=""
+                    className="w-full h-full object-cover"
+                  />
                   <div className="absolute inset-0 bg-gradient-to-t from-slate-900 to-transparent" />
                 </div>
               ) : (
                 <div className="h-16 bg-slate-800/50" />
               )}
-              <button 
+              <button
                 onClick={() => setSelectedNotice(null)}
                 className="absolute top-4 right-4 p-2 bg-black/40 hover:bg-black/60 text-white rounded-full backdrop-blur-md transition-colors z-10"
               >
@@ -131,18 +147,21 @@ function NoticeList() {
                     <Star className="w-3 h-3 fill-amber-500" /> Featured
                   </span>
                 )}
-                <span className={`text-[10px] font-bold px-2 py-1 rounded-full bg-slate-800 border border-slate-700 uppercase tracking-wide ${CATEGORY_STYLES[selectedNotice.category] ?? CATEGORY_STYLES.GENERAL}`}>
+                <span
+                  className={`text-[10px] font-bold px-2 py-1 rounded-full bg-slate-800 border border-slate-700 uppercase tracking-wide ${CATEGORY_STYLES[selectedNotice.category] ?? CATEGORY_STYLES.GENERAL}`}
+                >
                   {selectedNotice.category}
                 </span>
                 <span className="text-xs text-slate-400 ml-auto flex items-center gap-1">
-                  <Calendar className="w-3 h-3" /> {new Date(selectedNotice.created_at).toLocaleDateString()}
+                  <Calendar className="w-3 h-3" />{' '}
+                  {new Date(selectedNotice.created_at).toLocaleDateString()}
                 </span>
               </div>
-              
+
               <h2 className="text-xl font-bold text-white mb-4 leading-tight">
                 {selectedNotice.title}
               </h2>
-              
+
               <div className="text-sm text-slate-300 whitespace-pre-wrap leading-relaxed">
                 {selectedNotice.content}
               </div>
@@ -151,13 +170,14 @@ function NoticeList() {
             {/* Modal Footer / Action Button */}
             {selectedNotice.action_button_link && (
               <div className="p-4 border-t border-slate-700/50 bg-slate-800/50 shrink-0 flex justify-end">
-                <a 
+                <a
                   href={selectedNotice.action_button_link}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-500 hover:bg-indigo-600 text-white text-sm font-bold rounded-xl transition-colors"
                 >
-                  {selectedNotice.action_button_text || 'View Details'} <ExternalLink className="w-4 h-4" />
+                  {selectedNotice.action_button_text || 'View Details'}{' '}
+                  <ExternalLink className="w-4 h-4" />
                 </a>
               </div>
             )}

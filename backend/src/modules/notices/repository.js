@@ -49,12 +49,33 @@ async function createNotice({
     `INSERT INTO notices (title, content, category, image_url, action_button_text, action_button_link, is_featured, created_by)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      RETURNING id, title, content, category, image_url, action_button_text, action_button_link, is_featured, is_active, created_at`,
-    [title, content, category, image_url, action_button_text, action_button_link, is_featured, createdBy]
+    [
+      title,
+      content,
+      category,
+      image_url,
+      action_button_text,
+      action_button_link,
+      is_featured,
+      createdBy,
+    ]
   );
   return rows[0];
 }
 
-async function updateNotice(id, { title, content, category, image_url, action_button_text, action_button_link, is_featured, is_active }) {
+async function updateNotice(
+  id,
+  {
+    title,
+    content,
+    category,
+    image_url,
+    action_button_text,
+    action_button_link,
+    is_featured,
+    is_active,
+  }
+) {
   const { rows } = await pool.query(
     `UPDATE notices
      SET title              = COALESCE($1, title),
@@ -69,7 +90,17 @@ async function updateNotice(id, { title, content, category, image_url, action_bu
      WHERE id = $9
        AND deleted_at IS NULL
      RETURNING id, title, content, category, image_url, action_button_text, action_button_link, is_featured, is_active, updated_at`,
-    [title, content, category, image_url, action_button_text, action_button_link, is_featured, is_active, id]
+    [
+      title,
+      content,
+      category,
+      image_url,
+      action_button_text,
+      action_button_link,
+      is_featured,
+      is_active,
+      id,
+    ]
   );
   return rows[0] ?? null; // null = not found or already deleted
 }
