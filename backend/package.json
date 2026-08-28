@@ -32,6 +32,7 @@
     "@fastify/swagger-ui": "^6.0.0",
     "@google/genai": "^2.13.0",
     "@google/generative-ai": "^0.24.1",
+    "@sentry/node": "^10.66.0",
     "argon2": "^0.44.0",
     "bullmq": "^6.1.2",
     "cheerio": "^1.2.0",
