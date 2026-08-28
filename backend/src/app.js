@@ -434,9 +434,15 @@ if (process.env.NODE_ENV !== 'test') {
 }
 
 const bulkJobQueue = require('./services/bulkJobQueue');
+const {
+  checkDatabase,
+  integrationStatus,
+  writeStartupSummary,
+} = require('./utils/startupDiagnostics');
 
 const start = async () => {
   try {
+    const database = await checkDatabase(pool, config.databaseUrl);
     await app.listen({
       port: config.port,
       host: config.host,
@@ -444,10 +450,14 @@ const start = async () => {
     initializeWebSocket(app.server, app.log);
     await bulkJobQueue.init();
     await getRedisClient();
-    app.log.info(
-      { port: config.port },
-      `Server listening on port ${config.port}`
-    );
+    writeStartupSummary({
+      logger: app.log,
+      database,
+      redis: getRedisStatus(),
+      queue: bulkJobQueue.getStatus(),
+      integrations: integrationStatus(config),
+      port: config.port,
+    });
   } catch (err) {
     app.log.error(err);
     process.exit(1);
