@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
-import { Mail, Lock, Eye, EyeOff } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, Star, X, ExternalLink, Calendar, Link as LinkIcon } from 'lucide-react';
 import api from '../lib/axios';
 import useAuthStore from '../store/auth';
 
@@ -13,6 +13,11 @@ const CATEGORY_STYLES = {
   NEWS: 'text-emerald-300',
   ALERT: 'text-red-300',
   GENERAL: 'text-slate-300',
+  INTERNSHIP: 'text-purple-300',
+  ANNOUNCEMENT: 'text-blue-300',
+  EVENT: 'text-fuchsia-300',
+  IMPORTANT: 'text-rose-400',
+  DEADLINE: 'text-orange-300',
 };
 
 // Notice list — owns its own loading / error / empty states
@@ -27,6 +32,8 @@ function NoticeList() {
     staleTime: 1000 * 60 * 5, // cache for 5 min
     retry: 1,
   });
+
+  const [selectedNotice, setSelectedNotice] = useState(null);
 
   if (isLoading) {
     return (
@@ -50,20 +57,114 @@ function NoticeList() {
   }
 
   return (
-    <div className="notice-scrollbar max-h-[500px] overflow-y-auto pr-2 space-y-4 divide-y divide-white/10">
-      {notices.map((notice) => (
-        <div key={notice.id} className="pt-4 first:pt-0">
-          <p
-            className={`text-xs font-extrabold uppercase tracking-wider ${CATEGORY_STYLES[notice.category] ?? CATEGORY_STYLES.GENERAL}`}
+    <>
+      <div className="notice-scrollbar max-h-[500px] overflow-y-auto pr-2 space-y-4">
+        {notices.map((notice) => (
+          <div 
+            key={notice.id} 
+            onClick={() => setSelectedNotice(notice)}
+            className="group relative p-4 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20 transition-all cursor-pointer flex gap-4"
           >
-            {notice.title}
-          </p>
-          <p className="text-sm text-white/75 mt-1 leading-relaxed">
-            {notice.content}
-          </p>
+            {notice.image_url && (
+              <img 
+                src={notice.image_url} 
+                alt="" 
+                className="w-16 h-16 rounded-xl object-cover shrink-0 opacity-80 group-hover:opacity-100 transition-opacity" 
+              />
+            )}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1">
+                {notice.is_featured && (
+                  <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400 shrink-0" />
+                )}
+                <p className={`text-xs font-extrabold uppercase tracking-wider ${CATEGORY_STYLES[notice.category] ?? CATEGORY_STYLES.GENERAL}`}>
+                  {notice.category}
+                </p>
+              </div>
+              <p className="text-sm font-bold text-white mb-1 truncate group-hover:text-indigo-200 transition-colors">
+                {notice.title}
+              </p>
+              <p className="text-xs text-white/60 line-clamp-2">
+                {notice.content}
+              </p>
+              <div className="flex items-center gap-2 mt-2">
+                <span className="text-[10px] text-white/40">
+                  {new Date(notice.created_at).toLocaleDateString()}
+                </span>
+                {notice.action_button_link && (
+                  <span className="text-[10px] font-bold text-indigo-300 flex items-center gap-1 ml-auto">
+                    View Details <ExternalLink className="w-3 h-3" />
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {selectedNotice && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="relative w-full max-w-lg bg-slate-900 border border-slate-700 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            {/* Modal Header & Image */}
+            <div className="relative shrink-0">
+              {selectedNotice.image_url ? (
+                <div className="w-full h-48 bg-slate-800 relative">
+                  <img src={selectedNotice.image_url} alt="" className="w-full h-full object-cover" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-slate-900 to-transparent" />
+                </div>
+              ) : (
+                <div className="h-16 bg-slate-800/50" />
+              )}
+              <button 
+                onClick={() => setSelectedNotice(null)}
+                className="absolute top-4 right-4 p-2 bg-black/40 hover:bg-black/60 text-white rounded-full backdrop-blur-md transition-colors z-10"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-6 overflow-y-auto notice-scrollbar -mt-8 relative z-10">
+              <div className="flex items-center gap-2 mb-3">
+                {selectedNotice.is_featured && (
+                  <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase tracking-wide">
+                    <Star className="w-3 h-3 fill-amber-500" /> Featured
+                  </span>
+                )}
+                <span className={`text-[10px] font-bold px-2 py-1 rounded-full bg-slate-800 border border-slate-700 uppercase tracking-wide ${CATEGORY_STYLES[selectedNotice.category] ?? CATEGORY_STYLES.GENERAL}`}>
+                  {selectedNotice.category}
+                </span>
+                <span className="text-xs text-slate-400 ml-auto flex items-center gap-1">
+                  <Calendar className="w-3 h-3" /> {new Date(selectedNotice.created_at).toLocaleDateString()}
+                </span>
+              </div>
+              
+              <h2 className="text-xl font-bold text-white mb-4 leading-tight">
+                {selectedNotice.title}
+              </h2>
+              
+              <div className="text-sm text-slate-300 whitespace-pre-wrap leading-relaxed">
+                {selectedNotice.content}
+              </div>
+            </div>
+
+            {/* Modal Footer / Action Button */}
+            {selectedNotice.action_button_link && (
+              <div className="p-4 border-t border-slate-700/50 bg-slate-800/50 shrink-0 flex justify-end">
+                <a 
+                  href={selectedNotice.action_button_link}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-500 hover:bg-indigo-600 text-white text-sm font-bold rounded-xl transition-colors"
+                >
+                  {selectedNotice.action_button_text || 'View Details'} <ExternalLink className="w-4 h-4" />
+                </a>
+              </div>
+            )}
+          </div>
         </div>
-      ))}
-    </div>
+      )}
+    </>
   );
 }
 
