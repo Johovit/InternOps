@@ -47,7 +47,7 @@ jest.mock('../../src/config/redis', () => ({
 }));
 
 const mockFetch = jest.fn();
-global.fetch = mockFetch;
+jest.spyOn(global, 'fetch').mockImplementation(mockFetch);
 
 describe('AI Provider Service', () => {
   let aiService;
@@ -81,7 +81,7 @@ describe('AI Provider Service', () => {
 
     mockGetRedisClient.mockReset();
     mockFetch.mockReset();
-    global.fetch = mockFetch;
+    jest.spyOn(global, 'fetch').mockImplementation(mockFetch);
 
     aiService = require('../../src/services/aiProviderService');
   });
