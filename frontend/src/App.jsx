@@ -24,6 +24,7 @@ const InternOpsAssistant = lazy(
   () => import('./components/InternOpsAssistant')
 );
 const Reports = lazy(() => import('./pages/admin/Reports'));
+const ReportTemplates = lazy(() => import('./pages/admin/ReportTemplates'));
 const Analytics = lazy(() => import('./pages/admin/Analytics'));
 const Exports = lazy(() => import('./pages/admin/Exports'));
 const AdminDashboard = lazy(() => import('./pages/admin/AdminDashboard'));
@@ -33,12 +34,14 @@ const Notices = lazy(() => import('./pages/admin/Notices'));
 const Certificates = lazy(() => import('./pages/admin/Certificates'));
 const BulkGenerate = lazy(() => import('./pages/admin/BulkGenerate'));
 const CanvaTemplates = lazy(() => import('./pages/admin/CanvaTemplates'));
+const CanvaCallback = lazy(() => import('./pages/admin/CanvaCallback'));
 const AICertificates = lazy(() => import('./pages/admin/AICertificates'));
 const QuickGenerate = lazy(() => import('./pages/admin/QuickGenerate'));
 const FeatureFlags = lazy(() => import('./pages/admin/FeatureFlags'));
 const GithubSync = lazy(() => import('./pages/admin/GithubSync'));
 const ProjectsPage = lazy(() => import('./pages/admin/ProjectsPage'));
 const ProjectDetailPage = lazy(() => import('./pages/admin/ProjectDetailPage'));
+const TaskDetails = lazy(() => import('./pages/admin/TaskDetails'));
 
 function PageLoader() {
   return (
@@ -85,23 +88,26 @@ export default function App() {
 
   useEffect(() => {
     if (!bootRefreshPromise) {
-      bootRefreshPromise = api.post('/auth/refresh', {});
-    }
-
-    bootRefreshPromise
-      .then((res) => {
+      bootRefreshPromise = api.post('/auth/refresh', {}).then(async (res) => {
         setAuth({
           accessToken: res.data.accessToken,
           user: res.data.user,
         });
-        // Fetch feature flags right after a successful auth refresh so they
-        // are available before any page component renders.
-        fetchFlags();
-      })
+
+        // Fetch feature flags only once as part of the shared boot process.
+        await fetchFlags();
+
+        return res;
+      });
+    }
+
+    bootRefreshPromise
       .catch((err) => {
         const status = err.response?.status;
+
         if (status === 400 || status === 401 || status === 403) {
           const currentToken = useAuthStore.getState().accessToken;
+
           if (!currentToken) {
             logout();
             resetFlags();
@@ -227,6 +233,22 @@ export default function App() {
 
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="tasks" element={<Tasks />} />
+            <Route
+              path="tasks/:taskId"
+              element={
+                <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL']}>
+                  <TaskDetails />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="admin/tasks/:taskId"
+              element={
+                <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL']}>
+                  <TaskDetails />
+                </RoleGuard>
+              }
+            />
             <Route path="attendance" element={<Attendance />} />
             <Route path="ratings" element={<Ratings />} />
             <Route path="meetings" element={<Meetings />} />
@@ -242,6 +264,14 @@ export default function App() {
               element={
                 <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL']}>
                   <Reports />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="report-templates"
+              element={
+                <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL']}>
+                  <ReportTemplates />
                 </RoleGuard>
               }
             />
@@ -334,30 +364,6 @@ export default function App() {
                 </RoleGuard>
               }
             />
-            <Route
-              path="departments/:deptId/attendance"
-              element={
-                <RoleGuard allowedRoles={['ADMIN']}>
-                  <Attendance />
-                </RoleGuard>
-              }
-            />
-            <Route
-              path="departments/:deptId/ratings"
-              element={
-                <RoleGuard allowedRoles={['ADMIN']}>
-                  <Ratings />
-                </RoleGuard>
-              }
-            />
-            <Route
-              path="departments/:deptId/tasks"
-              element={
-                <RoleGuard allowedRoles={['ADMIN']}>
-                  <Tasks />
-                </RoleGuard>
-              }
-            />
 
             <Route
               path="audit"
@@ -400,6 +406,10 @@ export default function App() {
                   <CanvaTemplates />
                 </RoleGuard>
               }
+            />
+            <Route
+              path="canva-templates/callback"
+              element={<CanvaCallback />}
             />
             <Route
               path="ai-certificates"
