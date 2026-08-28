@@ -264,7 +264,10 @@ describe('AI Provider Service', () => {
 
       aiService = require('../../src/services/aiProviderService');
 
-      let res = await aiService.generateAIResponse({ userId: 'u1', messages: [] });
+      let res = await aiService.generateAIResponse({
+        userId: 'u1',
+        messages: [],
+      });
       expect(res.error).toBeDefined();
       res = await aiService.generateAIResponse({ userId: 'u1', messages: [] });
       expect(res.error).toBeDefined();
@@ -351,11 +354,18 @@ describe('AI Provider Service', () => {
     });
 
     expect(res.error).toBeDefined();
-    expect(res.error.message).toBe('All configured AI providers are unavailable.');
+    expect(res.error.message).toBe(
+      'All configured AI providers are unavailable.'
+    );
     expect(Array.isArray(res.error.providers)).toBe(true);
     expect(res.error.providers).toEqual([
       { provider: 'gemini', reason: 'missing_api_key' },
-      { provider: 'groq', reason: 'groq unreachable', code: 'AI_PROVIDER_NETWORK_ERROR', statusCode: null },
+      {
+        provider: 'groq',
+        reason: 'groq unreachable',
+        code: 'AI_PROVIDER_NETWORK_ERROR',
+        statusCode: null,
+      },
     ]);
 
     mockConfig.ai.geminiKey = 'gemini-key';
@@ -378,7 +388,10 @@ describe('AI Provider Service', () => {
 
     aiService._caches.get = jest.fn().mockReturnValue(undefined);
 
-    const res = await aiService.generateAIResponse({ userId: 'cache-test-user', messages: [] });
+    const res = await aiService.generateAIResponse({
+      userId: 'cache-test-user',
+      messages: [],
+    });
     expect(res.error).toBeDefined();
 
     expect(LRUCache).toHaveBeenCalledWith(
