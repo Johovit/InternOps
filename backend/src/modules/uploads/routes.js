@@ -117,6 +117,43 @@ async function routes(fastify) {
       return { success: true, avatar_url: url };
     }
   );
+
+  // Remove the current user's avatar
+  fastify.delete(
+    '/avatar',
+    {
+      preHandler: [auth, sanitize],
+      schema: {
+        tags: ['Uploads'],
+        description: 'Remove the current avatar image',
+      },
+    },
+    async (req, reply) => {
+      const avatarUrl = await repo.getAvatarUrl(req.user.id);
+
+      if (!avatarUrl) {
+        return reply.status(400).send({
+          error: 'No custom avatar to remove',
+        });
+      }
+
+      await repo.updateAvatarUrl(req.user.id, null);
+
+      if (avatarUrl.startsWith('/uploads/')) {
+        await repo.deleteFile(avatarUrl).catch((err) => {
+          fastify.log.warn(
+            { err, userId: req.user.id },
+            'Failed to delete avatar file'
+          );
+        });
+      }
+
+      return {
+        success: true,
+        avatar_url: null,
+      };
+    }
+  );
 }
 
 module.exports = routes;

@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+- Profile image removal with confirmation, default-avatar fallback, persistent backend cleanup, and success/error feedback.
+
 ### Added
 
 - API versioning infrastructure: all business routes are now namespaced under `/api/v1/` (`app.js`).
