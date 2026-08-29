@@ -225,6 +225,16 @@ async function revokeCertificate(id, reason = null) {
 // ============================================================
 
 async function startBulkGeneration(data, userId) {
+  const MAX_BULK_CERTIFICATES = 500;
+
+  if (data.certificates.length > MAX_BULK_CERTIFICATES) {
+    const err = new Error(
+      `Bulk generation limit exceeded: maximum ${MAX_BULK_CERTIFICATES} certificates per request (received ${data.certificates.length})`
+    );
+    err.statusCode = 400;
+    throw err;
+  }
+
   const job = await repo.createBulkJob(
     {
       template_id: data.template_id,
