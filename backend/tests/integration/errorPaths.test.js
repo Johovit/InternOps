@@ -25,6 +25,23 @@ describe('API error-path integration tests', () => {
     await app.close();
   });
 
+  it('accepts unauthenticated client error reports without CSRF', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/client-error',
+      payload: {
+        message: 'Test client error',
+        stack: 'Error: Test client error',
+        componentStack: 'at TestComponent',
+        url: 'http://localhost:5173/dashboard',
+        userAgent: 'test-agent',
+        timestamp: new Date().toISOString(),
+      },
+    });
+
+    expect(res.statusCode).toBe(204);
+  });
+
   it('returns a sanitized 500 when a database operation fails', async () => {
     const dbError = new Error('database connection refused');
     const query = jest.spyOn(pool, 'query').mockRejectedValueOnce(dbError);
