@@ -94,9 +94,6 @@ export default function Profile() {
       return false;
     }
 
-    // Allow international letters, spaces, apostrophes and hyphens
-    const nameRegex = /^[\p{L}\p{M}\s'-]+$/u;
-
     if (!nameRegex.test(name)) {
       setNameError('Name contains invalid characters.');
       return false;
