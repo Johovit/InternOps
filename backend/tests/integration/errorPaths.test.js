@@ -25,6 +25,23 @@ describe('API error-path integration tests', () => {
     await app.close();
   });
 
+  it('accepts unauthenticated client error reports without CSRF', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/client-error',
+      payload: {
+        message: 'Test client error',
+        stack: 'Error: Test client error',
+        componentStack: 'at TestComponent',
+        url: 'http://localhost:5173/dashboard',
+        userAgent: 'test-agent',
+        timestamp: new Date().toISOString(),
+      },
+    });
+
+    expect(res.statusCode).toBe(204);
+  });
+
   it('returns a sanitized 500 when a database operation fails', async () => {
     const dbError = new Error('database connection refused');
     const query = jest.spyOn(pool, 'query').mockRejectedValueOnce(dbError);
@@ -79,7 +96,12 @@ describe('API error-path integration tests', () => {
   });
 
   it('returns 413 when an avatar upload exceeds the configured file limit', async () => {
-    const userId = '00000000-0000-4000-8000-000000000001';
+    const { rows } = await pool.query(
+      `SELECT id FROM users
+       WHERE role = 'ADMIN' AND suspended = FALSE AND deleted_at IS NULL
+       ORDER BY created_at ASC LIMIT 1`
+    );
+    const userId = rows[0].id;
     const token = jwt.sign(
       { id: userId, role: 'ADMIN', typ: 'access', jti: 'error-path-upload' },
       config.jwt.secret,

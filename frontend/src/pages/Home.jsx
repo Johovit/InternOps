@@ -7,11 +7,11 @@ import { QUERY_KEYS } from '../constants/queryKeys';
 import { Card, StatCard, ApiErrorState } from '../components/ui';
 
 function attendancePct(m) {
-  const total = Number(m.attendance_total) || 0;
-  if (!total) return null;
-
-  const score = Number(m.present_count) + Number(m.half_day_count) * 0.5;
-  return Math.round((score / total) * 100);
+  const total = Number(m.attendance_total);
+  const present = Number(m.present_count);
+  if (!Number.isFinite(total) || total <= 0) return null;
+  if (!Number.isFinite(present) || present < 0) return 0;
+  return Math.max(0, Math.min(100, Math.round((present / total) * 100)));
 }
 
 function QuickAction({ to, icon, label, tint, description }) {
@@ -68,12 +68,27 @@ function ManagerHome({ user }) {
   const active = team.filter(
     (m) => !m.suspended && (m.internship_status || 'ACTIVE') === 'ACTIVE'
   ).length;
+  const seniorTlCount = team.filter(
+    (member) => member.role === 'SENIOR_TL'
+  ).length;
 
-  const pcts = team.map(attendancePct).filter((p) => p !== null);
+  const tlCount = team.filter((member) => member.role === 'TL').length;
 
-  const avgAtt = pcts.length
-    ? Math.round(pcts.reduce((a, b) => a + b, 0) / pcts.length)
+  const captainCount = team.filter(
+    (member) => member.role === 'CAPTAIN'
+  ).length;
+
+  const internCount = team.filter((member) => member.role === 'INTERN').length;
+  const isAdmin = user?.role === 'ADMIN';
+  const pcts = team
+    .map(attendancePct)
+    .filter((percentage) => Number.isFinite(percentage));
+  const averageAttendance = pcts.length
+    ? Math.round(
+        pcts.reduce((sum, percentage) => sum + percentage, 0) / pcts.length
+      )
     : null;
+  const avgAtt = Number.isFinite(averageAttendance) ? averageAttendance : null;
 
   const ratings = team
     .map((m) => m.avg_rating)
@@ -110,8 +125,38 @@ function ManagerHome({ user }) {
       {/* Summary Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <StatCard
-          label="Team members"
+          label={isAdmin ? 'Total team members' : 'Team members'}
           value={team.length}
+          sub={
+            isAdmin ? (
+              <span className="block leading-5">
+                <span className="flex items-center gap-2 whitespace-nowrap">
+                  <span>
+                    {seniorTlCount}{' '}
+                    {seniorTlCount === 1 ? 'Senior TL' : 'Senior TLs'}
+                  </span>
+
+                  <span className="text-slate-400 dark:text-slate-500">•</span>
+
+                  <span>
+                    {tlCount} {tlCount === 1 ? 'TL' : 'TLs'}
+                  </span>
+                </span>
+
+                <span className="mt-1 flex items-center gap-2 whitespace-nowrap">
+                  <span>
+                    {captainCount} {captainCount === 1 ? 'Captain' : 'Captains'}
+                  </span>
+
+                  <span className="text-slate-400 dark:text-slate-500">•</span>
+
+                  <span>
+                    {internCount} {internCount === 1 ? 'Intern' : 'Interns'}
+                  </span>
+                </span>
+              </span>
+            ) : undefined
+          }
           icon="👥"
           gradient="from-indigo-500 to-blue-600"
         />
@@ -253,7 +298,7 @@ function InternHome({ user }) {
   } = useQuery({
     queryKey: ['internHome', user?.id],
     queryFn: async () => {
-      const [att, ratings] = await Promise.all([
+      const [attResult, ratingsResult] = await Promise.allSettled([
         api
           .get(
             `/attendance/${user.id}/stats?month=${
@@ -264,7 +309,16 @@ function InternHome({ user }) {
         api.get(`/ratings/${user.id}`).then((r) => r.data),
       ]);
 
-      return { att, ratings };
+      const att = attResult.status === 'fulfilled' ? attResult.value : null;
+      const attError =
+        attResult.status === 'rejected' ? attResult.reason : null;
+
+      const ratings =
+        ratingsResult.status === 'fulfilled' ? ratingsResult.value : null;
+      const ratingsError =
+        ratingsResult.status === 'rejected' ? ratingsResult.reason : null;
+
+      return { att, attError, ratings, ratingsError };
     },
     enabled: !!user,
   });
@@ -286,14 +340,21 @@ function InternHome({ user }) {
     );
   }
 
-  const att = stats?.att || [];
-  const ratings = stats?.ratings || [];
+  const att = stats?.att;
+  const attError = stats?.attError;
+  const ratings = stats?.ratings;
+  const attData = Array.isArray(att) ? att : [];
+  const ratingsData = Array.isArray(ratings) ? ratings : [];
 
-  const avg = ratings.length
-    ? (ratings.reduce((a, r) => a + r.score, 0) / ratings.length).toFixed(1)
+  const avg = ratingsData.length
+    ? (
+        ratingsData.reduce((a, r) => a + r.score, 0) / ratingsData.length
+      ).toFixed(1)
     : '—';
 
-  const present = att.find((s) => s.status === 'PRESENT')?.count || 0;
+  const present = att
+    ? attData.find((s) => s.status === 'PRESENT')?.count || 0
+    : '—';
 
   return (
     <div className="animate-fade-in-up text-slate-900 dark:text-white">
@@ -325,7 +386,7 @@ function InternHome({ user }) {
 
         <StatCard
           label="My avg rating"
-          value={avg}
+          value={ratings !== null ? avg : '—'}
           sub="out of 10"
           icon="⭐"
           gradient="from-amber-400 to-orange-500"
@@ -333,7 +394,7 @@ function InternHome({ user }) {
 
         <StatCard
           label="Total ratings"
-          value={ratings.length}
+          value={ratings !== null ? ratingsData.length : '—'}
           icon="📊"
           gradient="from-indigo-500 to-blue-600"
         />
@@ -352,7 +413,13 @@ function InternHome({ user }) {
             </p>
           </div>
 
-          {att.length === 0 ? (
+          {attError ? (
+            <ApiErrorState
+              error={attError}
+              title="Failed to load attendance records"
+              fallback="Unable to load attendance records. Please try again."
+            />
+          ) : attData.length === 0 ? (
             <div className="rounded-3xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 text-center py-8 px-4">
               <p className="text-slate-800 dark:text-white font-extrabold">
                 No records yet
@@ -364,7 +431,7 @@ function InternHome({ user }) {
             </div>
           ) : (
             <div className="space-y-2">
-              {att.map((s) => (
+              {attData.map((s) => (
                 <div
                   key={s.status}
                   className="flex justify-between items-center text-sm py-3 px-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70"
