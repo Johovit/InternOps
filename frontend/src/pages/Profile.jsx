@@ -264,6 +264,8 @@ export default function Profile() {
         });
   };
   const isAdmin = profile?.role === 'ADMIN';
+  const profileAvatarUrl =
+    profile?.avatar_url || (isAdmin ? '/admin-default-avatar.svg' : null);
   const scopeLabel = isAdmin ? 'Access scope' : 'Department';
   const accessScope = isAdmin
     ? 'Platform-wide'
@@ -337,9 +339,9 @@ export default function Profile() {
           <div className="flex min-w-0 flex-col gap-5 sm:flex-row sm:items-center">
             <div className="w-32 shrink-0">
               <div className="relative mx-auto w-fit">
-                {profile?.avatar_url ? (
+                {profileAvatarUrl ? (
                   <img
-                    src={profile.avatar_url}
+                    src={profileAvatarUrl}
                     alt="avatar"
                     className="h-24 w-24 rounded-3xl border-4 border-white bg-white object-cover shadow-xl dark:border-slate-900 dark:bg-slate-900"
                   />

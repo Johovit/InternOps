@@ -326,7 +326,8 @@ export default function DashboardLayout() {
   const unreadCount = unreadData?.unread || 0;
 
   const displayName = me?.full_name || user?.fullName || user?.email;
-  const avatarUrl = me?.avatar_url || null;
+  const avatarUrl =
+    me?.avatar_url || (role === 'ADMIN' ? '/admin-default-avatar.svg' : null);
 
   useEffect(() => {
     localStorage.setItem('sidebar', collapsed ? 'collapsed' : 'open');

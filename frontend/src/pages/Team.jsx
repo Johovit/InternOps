@@ -104,16 +104,16 @@ function Stars({ value }) {
   return (
     <span
       title={`${safeRaw.toFixed(1).replace(/\.0$/, '')}/10`}
-      className="inline-flex items-center gap-2"
+      className="inline-flex max-w-full flex-wrap items-center justify-center gap-x-2 gap-y-0.5"
     >
-      <span className="inline-flex items-center gap-0.5 text-amber-500">
+      <span className="inline-flex shrink-0 items-center gap-0.5 text-amber-500">
         <span>{'★'.repeat(full)}</span>
         <span className="text-slate-300 dark:text-slate-700">
           {'★'.repeat(empty)}
         </span>
       </span>
 
-      <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
+      <span className="shrink-0 whitespace-nowrap text-xs font-bold text-slate-500 dark:text-slate-400">
         {safeRaw.toFixed(1).replace(/\.0$/, '')}/10
       </span>
     </span>
@@ -858,11 +858,11 @@ function MemberDetail({ memberId, onClose }) {
                   </p>
                 </div>
 
-                <div className="bg-white dark:bg-slate-900 p-3 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
-                  <p className="text-base font-extrabold">
+                <div className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+                  <div className="flex min-h-7 items-center justify-center font-extrabold">
                     <Stars value={member.avg_rating} />
-                  </p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                  </div>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                     {member.rating_count} ratings
                   </p>
                 </div>
@@ -939,12 +939,17 @@ function MemberDetail({ memberId, onClose }) {
                     <dl className="space-y-1 text-sm">
                       <Row label="Reports to" value={member.manager_name} />
                       <Row label="Department" value={member.department_name} />
+                      <Row label="Intern Code" value={member.intern_code} />
+                      <Row
+                        label="Internship Domain"
+                        value={member.internship_domain}
+                      />
+                      <Row label="Position" value={member.position} />
                       <Row label="Phone" value={member.phone} />
                       <Row label="Location" value={member.location} />
                       <Row label="College" value={member.college} />
                       <Row label="Course" value={member.course} />
                       <Row label="Year" value={member.year_of_study} />
-                      <Row label="Position" value={member.position} />
                       <Row
                         label="Joining date"
                         value={
@@ -953,6 +958,30 @@ function MemberDetail({ memberId, onClose }) {
                             : null
                         }
                       />
+                      {member.lifecycle_effective_date && (
+                        <Row
+                          label="Lifecycle Effective Date"
+                          value={new Date(
+                            member.lifecycle_effective_date
+                          ).toLocaleDateString()}
+                        />
+                      )}
+                      {member.completion_date && (
+                        <Row
+                          label="Completion Date"
+                          value={new Date(
+                            member.completion_date
+                          ).toLocaleDateString()}
+                        />
+                      )}
+                      {member.extended_completion_date && (
+                        <Row
+                          label="Extended Completion Date"
+                          value={new Date(
+                            member.extended_completion_date
+                          ).toLocaleDateString()}
+                        />
+                      )}
                       <Row
                         label="Status"
                         value={
@@ -980,6 +1009,21 @@ function MemberDetail({ memberId, onClose }) {
                           )
                         }
                       />
+                      {member.offer_letter_url && (
+                        <Row
+                          label="Offer Letter"
+                          value={
+                            <a
+                              href={member.offer_letter_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="font-bold text-indigo-600 hover:underline dark:text-indigo-400"
+                            >
+                              View offer letter
+                            </a>
+                          }
+                        />
+                      )}
                       <Row label="Notes" value={member.notes} />
                     </dl>
                   ) : (
