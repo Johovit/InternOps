@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { resolveUploadUrl } from '../lib/uploadUrl';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   User,
@@ -292,7 +293,7 @@ export default function Profile() {
                 <div className="relative shrink-0">
                   {profile?.avatar_url ? (
                     <img
-                      src={profile.avatar_url}
+                      src={resolveUploadUrl(profile.avatar_url)}
                       alt="avatar"
                       className="w-24 h-24 md:w-28 md:h-28 rounded-3xl object-cover border-4 border-white dark:border-slate-900 shadow-xl bg-white dark:bg-slate-900"
                     />

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { resolveUploadUrl } from '../lib/uploadUrl';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -62,7 +63,7 @@ function initials(m) {
 function Avatar({ m, size = 'w-10 h-10' }) {
   return m?.avatar_url ? (
     <img
-      src={m.avatar_url}
+      src={resolveUploadUrl(m.avatar_url)}
       alt=""
       className={`${size} rounded-2xl object-cover border border-slate-200 dark:border-slate-700 shadow-sm`}
     />

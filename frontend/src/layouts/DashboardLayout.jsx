@@ -35,6 +35,7 @@ import { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import api from '../lib/axios';
+import { resolveUploadUrl } from '../lib/uploadUrl';
 import { connectSocket, disconnectSocket } from '../lib/socket';
 import { UserAvatar, ConfirmationModal } from '../components/ui';
 import useAuthStore from '../store/auth';
@@ -301,7 +302,7 @@ export default function DashboardLayout() {
   const unreadCount = unreadData?.unread || 0;
 
   const displayName = me?.full_name || user?.fullName || user?.email;
-  const avatarUrl = me?.avatar_url || null;
+  const avatarUrl = resolveUploadUrl(me?.avatar_url) || null;
 
   useEffect(() => {
     localStorage.setItem('sidebar', collapsed ? 'collapsed' : 'open');
