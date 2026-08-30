@@ -1,6 +1,7 @@
 'use strict';
 
 const app = require('../../src/app');
+const { generateAccessToken } = require('../../utils/tokens');
 
 describe('Attendance Bulk API', () => {
   beforeAll(async () => {
@@ -18,9 +19,18 @@ describe('Attendance Bulk API', () => {
       status: 'PRESENT',
     }));
 
+    const token = generateAccessToken({
+      id: '00000000-0000-0000-0000-000000000002',
+      role: 'CAPTAIN',
+      department_id: '00000000-0000-0000-0000-000000000003',
+    });
+
     const res = await app.inject({
       method: 'POST',
       url: '/api/v1/attendance/bulk',
+      headers: {
+        authorization: `Bearer ${token}`,
+      },
       payload: { entries },
     });
 
