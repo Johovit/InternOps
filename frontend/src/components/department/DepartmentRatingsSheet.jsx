@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Expand, Search, Star, X } from 'lucide-react';
 import CustomMonthPicker from '../CustomMonthPicker';
@@ -156,21 +156,19 @@ function RatingsGrid({ members, search, fullScreen }) {
             ))}
           </tr>
           <tr>
-            {periods.map((period, index) => (
-              <>
+            {periods.map((period) => (
+              <Fragment key={`${period.key}-columns`}>
                 <th
-                  key={`${period.key}-rating`}
                   className={`${RATING_COLUMN_WIDTH} border-b border-r border-slate-300 bg-slate-50 px-4 py-3 text-center font-extrabold text-slate-700 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-200`}
                 >
                   Rating
                 </th>
                 <th
-                  key={`${period.key}-reason`}
                   className={`${REASON_COLUMN_WIDTH} border-b border-r border-slate-300 bg-slate-50 px-4 py-3 text-left font-extrabold text-slate-700 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-200`}
                 >
                   Reason
                 </th>
-              </>
+              </Fragment>
             ))}
           </tr>
         </thead>
@@ -228,15 +226,13 @@ function RatingsGrid({ members, search, fullScreen }) {
                 {periods.map((period) => {
                   const rating = ratingsByPeriod.get(period.key);
                   return (
-                    <>
+                    <Fragment key={`${member.id}-${period.key}-cells`}>
                       <td
-                        key={`${period.key}-rating`}
                         className={`${RATING_COLUMN_WIDTH} border-b border-r border-slate-200 px-4 py-3 text-center dark:border-slate-600`}
                       >
                         <ScoreBadge value={rating?.score} />
                       </td>
                       <td
-                        key={`${period.key}-reason`}
                         className={`${REASON_COLUMN_WIDTH} border-b border-r border-slate-200 px-4 py-3 text-left text-slate-600 dark:border-slate-600 dark:text-slate-300`}
                       >
                         <span
@@ -246,7 +242,7 @@ function RatingsGrid({ members, search, fullScreen }) {
                           {rating?.remarks || '—'}
                         </span>
                       </td>
-                    </>
+                    </Fragment>
                   );
                 })}
               </tr>

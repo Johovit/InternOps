@@ -239,8 +239,8 @@ export default function Login() {
       </div>
 
       {/* Left: Auth Form */}
-      <div className="relative w-full lg:w-1/2 h-full flex flex-col justify-center items-center px-6 py-5 bg-black/10">
-        <div className="w-full max-w-md animate-pop-in">
+      <div className="relative w-full lg:w-1/2 h-full flex flex-col justify-center items-center px-6 py-5 bg-black/10 overflow-y-auto">
+        <div className="w-full max-w-md animate-pop-in py-4">
           <div className="text-center mb-5">
             <div className="inline-flex items-center justify-center rounded-[2rem] bg-white/[0.055] border border-white/10 px-5 py-3 shadow-2xl backdrop-blur-xl mb-4">
               <img
