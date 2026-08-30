@@ -1,7 +1,7 @@
 'use strict';
 
 const app = require('../../src/app');
-const { generateAccessToken } = require('../../utils/tokens');
+const { generateAccessToken } = require('../../src/utils/tokens');
 
 describe('Attendance Bulk API', () => {
   beforeAll(async () => {
