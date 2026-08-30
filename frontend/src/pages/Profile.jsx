@@ -74,14 +74,13 @@ export default function Profile() {
   };
   const validateProfile = () => {
     const name = full_name.trim();
-
     // Length validation
     if (name.length < 3 || name.length > 100) {
       setNameError('Name must be between 3 and 100 characters.');
       return false;
     }
-
-    // Allow international letters, spaces, apostrophes and hyphens
+    // Allow international letters, combining marks,
+    // spaces, apostrophes and hyphens
     const nameRegex = /^[\p{L}\p{M}\s'-]+$/u;
 
     if (!nameRegex.test(name)) {
@@ -89,12 +88,21 @@ export default function Profile() {
       return false;
     }
 
+    // Length validation
+    if (name.length < 3 || name.length > 100) {
+      setNameError('Name must be between 3 and 100 characters.');
+      return false;
+    }
+
+    if (!nameRegex.test(name)) {
+      setNameError('Name contains invalid characters.');
+      return false;
+    }
     // Block dangerous HTML characters
     if (/[<>]/.test(name)) {
       setNameError('Name contains invalid characters.');
       return false;
     }
-
     setNameError('');
     return true;
   };
