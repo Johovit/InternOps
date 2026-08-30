@@ -721,7 +721,7 @@ export default function DashboardLayout() {
         onCancel={() => setShowLogoutConfirm(false)}
         danger={true}
       />
-      <FloatingChatbot />
+      {loc.pathname !== '/profile' && <FloatingChatbot />}
     </div>
   );
 }

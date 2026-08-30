@@ -186,8 +186,10 @@ describe('Contract: Users', () => {
   });
 
   it('PATCH /api/v1/users/me returns message', async () => {
+    const currentProfile = await inject('GET', '/api/v1/users/me');
+    expect(currentProfile.statusCode).toBe(200);
     const res = await inject('PATCH', '/api/v1/users/me', {
-      payload: { full_name: 'Contract Test Admin' },
+      payload: { full_name: parse(currentProfile).full_name || 'Admin' },
     });
     expect(res.statusCode).toBe(200);
     assertSchema('PATCH /api/v1/users/me', parse(res));
