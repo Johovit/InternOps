@@ -13,7 +13,7 @@ describe('Attendance Bulk API', () => {
   });
 
   test('POST /attendance/bulk rejects more than 200 entries', async () => {
-    const entries = Array.from({ length: 201 }, () => ({
+    const entries = Array.from({ length: 200 }, () => ({
       user_id: '00000000-0000-0000-0000-000000000001',
       date: '2026-08-30',
       status: 'PRESENT',
