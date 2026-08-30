@@ -95,14 +95,18 @@ export default function App() {
   useEffect(() => {
     if (!bootRefreshPromise) {
       bootRefreshPromise = api.post('/auth/refresh', {}).then(async (res) => {
+        const refreshedUser = res.data.user;
         setAuth({
           accessToken: res.data.accessToken,
-          user: res.data.user,
+          user: refreshedUser,
         });
-
-        // Fetch feature flags only once as part of the shared boot process.
-        await fetchFlags();
-
+        // Feature flags are protected resources. Temporary-password accounts
+        // may access only Profile until the required password change succeeds.
+        if (refreshedUser?.mustChangePassword) {
+          resetFlags();
+        } else {
+          await fetchFlags();
+        }
         return res;
       });
     }
@@ -320,7 +324,7 @@ export default function App() {
             <Route
               path="admin"
               element={
-                <RoleGuard allowedRoles={['ADMIN']}>
+                <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL', 'TL']}>
                   <AdminDashboard />
                 </RoleGuard>
               }
@@ -328,7 +332,7 @@ export default function App() {
             <Route
               path="departments"
               element={
-                <RoleGuard allowedRoles={['ADMIN']}>
+                <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL', 'TL']}>
                   <Departments />
                 </RoleGuard>
               }
@@ -336,7 +340,7 @@ export default function App() {
             <Route
               path="admin/departments"
               element={
-                <RoleGuard allowedRoles={['ADMIN']}>
+                <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL', 'TL']}>
                   <Departments />
                 </RoleGuard>
               }
@@ -344,7 +348,7 @@ export default function App() {
             <Route
               path="departments/:deptId/projects"
               element={
-                <RoleGuard allowedRoles={['ADMIN']}>
+                <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL', 'TL']}>
                   <ProjectsPage />
                 </RoleGuard>
               }
@@ -352,7 +356,7 @@ export default function App() {
             <Route
               path="departments/:deptId/projects/:leadId"
               element={
-                <RoleGuard allowedRoles={['ADMIN']}>
+                <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL', 'TL']}>
                   <ProjectDetailPage />
                 </RoleGuard>
               }
@@ -360,7 +364,7 @@ export default function App() {
             <Route
               path="admin/departments/:deptId/attendance"
               element={
-                <RoleGuard allowedRoles={['ADMIN']}>
+                <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL', 'TL']}>
                   <Attendance />
                 </RoleGuard>
               }
@@ -368,7 +372,7 @@ export default function App() {
             <Route
               path="admin/departments/:deptId/ratings"
               element={
-                <RoleGuard allowedRoles={['ADMIN']}>
+                <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL', 'TL']}>
                   <Ratings />
                 </RoleGuard>
               }
@@ -376,7 +380,7 @@ export default function App() {
             <Route
               path="admin/departments/:deptId/tasks"
               element={
-                <RoleGuard allowedRoles={['ADMIN']}>
+                <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL', 'TL']}>
                   <Tasks />
                 </RoleGuard>
               }

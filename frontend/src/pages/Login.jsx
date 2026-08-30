@@ -19,7 +19,16 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [show, setShow] = useState(false);
   const [error, setError] = useState('');
-
+  const removeWhitespace = (value) => value.replace(/\s/g, '');
+  const blockSpaceKey = (event) => {
+    if (event.key === ' ') event.preventDefault();
+  };
+  const handleEmailChange = (event) => {
+    setEmail(removeWhitespace(event.target.value));
+  };
+  const handlePasswordChange = (event) => {
+    setPassword(removeWhitespace(event.target.value));
+  };
   const loginMut = useMutation({
     mutationFn: (creds) =>
       api.post('/auth/login', creds).then((res) => res.data),
@@ -41,7 +50,7 @@ export default function Login() {
     setError('');
 
     loginMut.mutate({
-      email,
+      email: email.trim().toLowerCase(),
       password,
     });
   };
@@ -62,8 +71,8 @@ export default function Login() {
       </div>
 
       {/* Left: Auth Form */}
-      <div className="relative w-full lg:w-1/2 h-full flex flex-col justify-center items-center px-6 py-5 bg-black/10 overflow-y-auto">
-        <div className="w-full max-w-md animate-pop-in py-4">
+      <div className="relative w-full lg:w-1/2 min-h-screen flex flex-col justify-center items-center overflow-y-auto bg-black/10 px-6 py-5">
+        <div className="w-full max-w-md animate-pop-in">
           <div className="text-center mb-5">
             <div className="inline-flex items-center justify-center rounded-[2rem] bg-white/[0.055] border border-white/10 px-5 py-3 shadow-2xl backdrop-blur-xl mb-4">
               <img
@@ -109,7 +118,8 @@ export default function Login() {
                     id="email"
                     type="email"
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    onChange={handleEmailChange}
+                    onKeyDown={blockSpaceKey}
                     disabled={loginMut.isPending}
                     required
                     autoComplete="email"
@@ -135,7 +145,8 @@ export default function Login() {
                     id="password"
                     type={show ? 'text' : 'password'}
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    onChange={handlePasswordChange}
+                    onKeyDown={blockSpaceKey}
                     disabled={loginMut.isPending}
                     required
                     autoComplete="current-password"
@@ -158,10 +169,10 @@ export default function Login() {
                   </button>
                 </div>
 
-                <div className="flex justify-end">
+                <div className="mt-2 flex justify-end">
                   <Link
                     to="/forgot-password"
-                    className="text-xs text-white/45 hover:text-white/70 transition"
+                    className="inline-flex py-1 text-xs text-white/55 transition hover:text-white/80"
                   >
                     Forgot Password?
                   </Link>
@@ -185,7 +196,7 @@ export default function Login() {
       </div>
 
       {/* Right: Notice Board */}
-      <div className="relative hidden lg:flex w-full lg:w-1/2 h-full flex-col justify-center px-8 lg:px-12 bg-white/[0.04] border-l border-white/10">
+      <div className="relative hidden lg:flex w-full lg:w-1/2 min-h-screen flex-col justify-center px-8 lg:px-12 bg-white/[0.04] border-l border-white/10">
         <div className="max-w-md mx-auto w-full space-y-5">
           <div className="inline-flex items-center gap-2 bg-indigo-400/10 text-indigo-200 border border-indigo-300/15 px-3 py-1.5 rounded-full text-xs font-extrabold uppercase">
             <span>📢 InternOps Notice Board</span>

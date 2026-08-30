@@ -7,6 +7,7 @@ import { Users } from 'lucide-react';
 import CustomSelect from '../components/CustomSelect';
 import CustomDatePicker from '../components/CustomDatePicker';
 import { ApiErrorState } from '../components/ui';
+import { getTeamRoleBreakdown } from '../utils/teamRoleBreakdown';
 
 const ROLE_LABEL = {
   SENIOR_TL: 'Senior TL',
@@ -1391,7 +1392,7 @@ export default function Team() {
         label: d,
       })),
     ];
-  }, [members]);
+  }, [members, user?.role]);
 
   const roles = useMemo(
     () => [...new Set(members.map((m) => m.role))],
@@ -1433,45 +1434,32 @@ export default function Team() {
       (sum, m) => sum + (Number(m.pending_proofs) || 0),
       0
     );
-    const seniorTlCount = members.filter(
-      (member) => member.role === 'SENIOR_TL'
-    ).length;
-    const tlCount = members.filter((member) => member.role === 'TL').length;
-    const captainCount = members.filter(
-      (member) => member.role === 'CAPTAIN'
-    ).length;
-    const internCount = members.filter(
-      (member) => member.role === 'INTERN'
-    ).length;
-    const memberBreakdown = (
+    const breakdownItems = getTeamRoleBreakdown(user?.role, members);
+    const memberBreakdown = breakdownItems.length ? (
       <span className="block text-[13px] font-semibold leading-5 text-slate-700 dark:text-slate-300">
-        <span className="flex items-center gap-2.5 whitespace-nowrap">
-          <span>
-            {seniorTlCount} {seniorTlCount === 1 ? 'Senior TL' : 'Senior TLs'}
+        {breakdownItems.map((row) => (
+          <span key={row.map(({ role }) => role).join('-')} className="block">
+            {row.map(({ role, count, label }, itemIndex) => (
+              <span key={role} className="inline-block whitespace-nowrap">
+                {itemIndex > 0 && (
+                  <span className="mx-2 font-extrabold text-indigo-400 dark:text-indigo-300">
+                    •
+                  </span>
+                )}
+                {count} {label}
+              </span>
+            ))}
           </span>
-          <span className="font-extrabold text-indigo-400 dark:text-indigo-300">
-            •
-          </span>
-          <span>
-            {tlCount} {tlCount === 1 ? 'TL' : 'TLs'}
-          </span>
-        </span>
-        <span className="mt-0.5 flex items-center gap-2.5 whitespace-nowrap">
-          <span>
-            {captainCount} {captainCount === 1 ? 'Captain' : 'Captains'}
-          </span>
-          <span className="font-extrabold text-indigo-400 dark:text-indigo-300">
-            •
-          </span>
-          <span>
-            {internCount} {internCount === 1 ? 'Intern' : 'Interns'}
-          </span>
-        </span>
+        ))}
+      </span>
+    ) : (
+      <span className="text-[13px] font-semibold text-slate-700 dark:text-slate-300">
+        No team members
       </span>
     );
 
     return { active, avgAtt, avgRating, pendingProofs, memberBreakdown };
-  }, [members]);
+  }, [members, user?.role]);
 
   const exportCsv = async () => {
     try {

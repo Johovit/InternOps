@@ -22,6 +22,7 @@ import {
   ConfirmationModal,
 } from '../components/ui';
 import useAuthStore from '../store/auth';
+import useFeatureFlagsStore from '../store/featureFlags';
 
 const ROLE_COLOR = {
   ADMIN: 'purple',
@@ -47,6 +48,7 @@ export default function Profile() {
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
   const setAuth = useAuthStore((s) => s.setAuth);
+  const fetchFlags = useFeatureFlagsStore((s) => s.fetchFlags);
 
   const [full_name, setfull_name] = useState('');
   const [oldPassword, setOldPassword] = useState('');
@@ -126,10 +128,11 @@ export default function Profile() {
 
   const changePasswordMut = useMutation({
     mutationFn: (data) => api.patch('/users/me/password', data),
-    onSuccess: () => {
+    onSuccess: async () => {
       flash('Password changed successfully');
       if (user?.mustChangePassword) {
         setAuth({ user: { ...user, mustChangePassword: false } });
+        await fetchFlags();
       }
       setOldPassword('');
       setNewPassword('');

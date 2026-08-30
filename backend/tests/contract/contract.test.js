@@ -237,7 +237,9 @@ describe('Contract: Departments', () => {
 
   it('DELETE /api/v1/departments/:id returns success + force', async () => {
     if (!deptId) return;
-    const res = await inject('DELETE', `/api/v1/departments/${deptId}`);
+    const res = await inject('DELETE', `/api/v1/departments/${deptId}`, {
+      payload: {},
+    });
     expect(res.statusCode).toBe(200);
     assertSchema('DELETE /api/v1/departments/:id', parse(res));
   });
