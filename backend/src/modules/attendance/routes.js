@@ -411,7 +411,7 @@ async function routes(fastify) {
         return await repo.getAuthorizedSubordinates(
           req.user.id,
           req.user.role,
-          req.user.department_id
+          req.user.departmentId || req.user.department_id
         );
       } catch (err) {
         req.log.error(err, 'Error in GET /attendance/authorized-members');
