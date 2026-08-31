@@ -383,10 +383,13 @@ export default function EditUserModal({ open, user, onClose }) {
     () =>
       role === 'TL'
         ? interns.filter(
-            (intern) => !intern.manager_id || intern.manager_id === user?.id
+            (intern) =>
+              !intern.manager_id ||
+              intern.manager_id === user?.id ||
+              intern.manager_id === user?.manager_id
           )
         : interns,
-    [interns, role, user?.id]
+    [interns, role, user?.id, user?.manager_id]
   );
   const filteredInterns = useMemo(() => {
     const query = internSearch.trim().toLowerCase();
@@ -759,7 +762,7 @@ export default function EditUserModal({ open, user, onClose }) {
                 }
                 description={
                   role === 'TL'
-                    ? 'Captain-managed interns are visible through the hierarchy and are not selected here. Selecting one transfers the intern directly to this TL.'
+                    ? 'Senior-TL-managed and unassigned interns can be transferred directly to this TL. Captain-managed interns remain visible through the hierarchy and are not selected here.'
                     : 'Assign interns who report directly to this Captain.'
                 }
                 singularLabel="Intern"
