@@ -146,7 +146,7 @@ async function routes(fastify) {
         }
         const entries = parsed.data.entries;
 
-        // Authorize all entries in a single recursive query ΓÇö avoids N+1.
+        // Authorize all entries in a single recursive query - avoids N+1.
         if (req.user.role !== 'ADMIN') {
           const targetIds = [...new Set(entries.map((e) => e.user_id))];
           if (targetIds.includes(req.user.id)) {
