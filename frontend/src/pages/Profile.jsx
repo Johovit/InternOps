@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   User,
   Camera,
+  Trash2,
   Pencil,
   Lock,
   CheckCircle2,
@@ -18,6 +19,7 @@ import {
   Badge,
   Spinner,
   ApiErrorState,
+  ConfirmationModal,
 } from '../components/ui';
 import useAuthStore from '../store/auth';
 
@@ -52,6 +54,7 @@ export default function Profile() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [nameError, setNameError] = useState('');
+  const [showRemoveAvatarModal, setShowRemoveAvatarModal] = useState(false);
   const {
     data: profile,
     isLoading,
@@ -74,14 +77,13 @@ export default function Profile() {
   };
   const validateProfile = () => {
     const name = full_name.trim();
-
     // Length validation
     if (name.length < 3 || name.length > 100) {
       setNameError('Name must be between 3 and 100 characters.');
       return false;
     }
-
-    // Allow international letters, spaces, apostrophes and hyphens
+    // Allow international letters, combining marks,
+    // spaces, apostrophes and hyphens
     const nameRegex = /^[\p{L}\p{M}\s'-]+$/u;
 
     if (!nameRegex.test(name)) {
@@ -89,12 +91,21 @@ export default function Profile() {
       return false;
     }
 
+    // Length validation
+    if (name.length < 3 || name.length > 100) {
+      setNameError('Name must be between 3 and 100 characters.');
+      return false;
+    }
+
+    if (!nameRegex.test(name)) {
+      setNameError('Name contains invalid characters.');
+      return false;
+    }
     // Block dangerous HTML characters
     if (/[<>]/.test(name)) {
       setNameError('Name contains invalid characters.');
       return false;
     }
-
     setNameError('');
     return true;
   };
@@ -142,6 +153,29 @@ export default function Profile() {
     },
     onError: (err) =>
       setError(err.response?.data?.error || 'Avatar upload failed'),
+  });
+  const removeAvatarMut = useMutation({
+    mutationFn: () => api.delete('/uploads/avatar'),
+    onSuccess: () => {
+      setShowRemoveAvatarModal(false);
+      flash('Avatar removed successfully');
+
+      queryClient.invalidateQueries({ queryKey: ['myProfile'] });
+      queryClient.invalidateQueries({ queryKey: ['me'] });
+
+      if (user) {
+        setAuth({
+          user: {
+            ...user,
+            avatar_url: null,
+          },
+        });
+      }
+    },
+    onError: (err) => {
+      setShowRemoveAvatarModal(false);
+      setError(err.response?.data?.error || 'Failed to remove avatar');
+    },
   });
 
   if (isLoading) {
@@ -312,6 +346,21 @@ export default function Profile() {
                       }}
                     />
                   </label>
+                  {profile?.avatar_url && (
+                    <button
+                      type="button"
+                      onClick={() => setShowRemoveAvatarModal(true)}
+                      disabled={
+                        avatarMut.isPending || removeAvatarMut.isPending
+                      }
+                      className="mt-4 w-full inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      {removeAvatarMut.isPending
+                        ? 'Removing...'
+                        : 'Remove image'}
+                    </button>
+                  )}
                 </div>
 
                 {/* Email and Badges */}
@@ -475,6 +524,17 @@ export default function Profile() {
             </Btn>
           </div>
         </Card>
+        <ConfirmationModal
+          open={showRemoveAvatarModal}
+          title="Remove Profile Image?"
+          message="Are you sure you want to remove your profile image?"
+          confirmText="Remove Image"
+          cancelText="Cancel"
+          loading={removeAvatarMut.isPending}
+          danger
+          onConfirm={() => removeAvatarMut.mutate()}
+          onCancel={() => setShowRemoveAvatarModal(false)}
+        />
       </div>
     </div>
   );
