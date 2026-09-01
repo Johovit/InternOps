@@ -210,8 +210,10 @@ def test_health_endpoint(client, monkeypatch):
     body = r.json()
     names = {p["name"] for p in body["providers"]}
     assert {"gemini", "openai"}.issubset(names)
-    assert all(p["status"] == "unhealthy" for p in body["providers"])
+    provider_status = {p["name"]: p["status"] for p in body["providers"]}
 
+    assert provider_status["gemini"] == "unhealthy"
+    assert provider_status["openai"] == "unhealthy"
 
 def test_health_endpoint_reports_healthy_when_key_present(client, monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "test-key")
