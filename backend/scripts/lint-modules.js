@@ -28,6 +28,10 @@ const EXEMPTIONS = new Map([
   // -- These modules pre-date the convention and are tracked for
   //    incremental refactoring in follow-up issues.  Remove them from
   //    this list once each module has been brought into compliance.
+  [
+    'client-errors',
+    'lightweight telemetry endpoint; no service or repository layer needed',
+  ],
   ['ai', 'service.js extraction pending'],
   ['ai-certificates', 'repository.js extraction pending'],
   ['analytics', 'service.js extraction pending'],

@@ -59,7 +59,7 @@ describe('AI Chat Integration Tests (#498)', () => {
 
   function mockProviderSuccess() {
     let callCount = 0;
-    global.fetch = jest.fn().mockImplementation(async () => {
+    jest.spyOn(global, 'fetch').mockImplementation(async () => {
       callCount += 1;
       return {
         ok: true,
@@ -110,7 +110,7 @@ describe('AI Chat Integration Tests (#498)', () => {
       await app.close();
       const pool = require('../../src/config/db');
       await pool.end();
-      delete global.fetch;
+      jest.restoreAllMocks();
     });
 
     it('should cache and reuse response for same user with same prompt', async () => {
@@ -168,7 +168,7 @@ describe('AI Chat Integration Tests (#498)', () => {
       await app.close();
       const pool = require('../../src/config/db');
       await pool.end();
-      delete global.fetch;
+      jest.restoreAllMocks();
     });
 
     it('should handle more prompts than cache max without crashing', async () => {
@@ -277,7 +277,7 @@ describe('AI Chat Integration Tests (#498)', () => {
       await app.close();
       const pool = require('../../src/config/db');
       await pool.end();
-      delete global.fetch;
+      jest.restoreAllMocks();
     });
 
     it('should allow requests up to rate limit', async () => {
@@ -371,7 +371,7 @@ describe('AI Chat Integration Tests (#498)', () => {
       await app.close();
       const pool = require('../../src/config/db');
       await pool.end();
-      delete global.fetch;
+      jest.restoreAllMocks();
     });
 
     it('should reject responses exceeding size limit', async () => {
@@ -472,7 +472,7 @@ describe('AI Chat Integration Tests (#498)', () => {
       const pool = require('../../src/config/db');
       await pool.end();
 
-      delete global.fetch;
+      jest.restoreAllMocks();
     });
 
     it('should reject responses exceeding the default 5 MB limit', async () => {
@@ -559,7 +559,7 @@ describe('AI Chat Integration Tests (#498)', () => {
       await app.close();
       const pool = require('../../src/config/db');
       await pool.end();
-      delete global.fetch;
+      jest.restoreAllMocks();
     });
 
     it('should never allow successful requests to exceed dailyLimit under concurrent load', async () => {

@@ -8,12 +8,21 @@ async function updateAvatarUrl(userId, avatarUrl) {
     userId,
   ]);
 }
+async function getAvatarUrl(userId) {
+  const { rows } = await pool.query(
+    'SELECT avatar_url FROM users WHERE id = $1',
+    [userId]
+  );
+
+  return rows[0]?.avatar_url || null;
+}
 
 async function deleteFile(dbSavedPath) {
   const projectRoot = path.resolve(__dirname, '..', '..', '..');
 
   const uploadsRoot = path.resolve(projectRoot, config.uploadDir);
-  const absolutePath = path.resolve(projectRoot, dbSavedPath);
+  const normalizedPath = dbSavedPath.replace(/^[/\\]+/, '');
+  const absolutePath = path.resolve(projectRoot, normalizedPath);
 
   const relative = path.relative(uploadsRoot, absolutePath);
 
@@ -33,6 +42,7 @@ async function deleteFile(dbSavedPath) {
 }
 
 module.exports = {
+  getAvatarUrl,
   updateAvatarUrl,
   deleteFile,
 };

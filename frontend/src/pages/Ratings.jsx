@@ -7,6 +7,7 @@ import useAuthStore from '../store/auth';
 import RatingForm from '../components/RatingForm';
 import CustomSelect from '../components/CustomSelect';
 import DepartmentRatingsSheet from '../components/department/DepartmentRatingsSheet';
+import { ROLE_LABEL } from '../constants/roles';
 
 function Stars({ value }) {
   if (value == null || value === '') {
@@ -58,12 +59,23 @@ export default function Ratings({
   );
   const isAdmin = user?.role === 'ADMIN';
 
-  const [viewDepartmentId, setViewDepartmentId] = useState(deptId || '');
+  const requestedDeptId =
+    deptId || user?.departmentId || user?.department_id || '';
+  const [viewDepartmentId, setViewDepartmentId] = useState(requestedDeptId);
   const [viewAll, setViewAll] = useState(false);
   const today = new Date().toISOString().slice(0, 10);
-  const yearStart = `${today.slice(0, 4)}-01-01`;
-  const [sheetFrom, setSheetFrom] = useState(yearStart);
-  const [sheetTo, setSheetTo] = useState(today);
+  const [selectedMonth, setSelectedMonth] = useState(today.slice(0, 7));
+  const [selectedYear, selectedMonthNumber] = selectedMonth
+    .split('-')
+    .map(Number);
+  const sheetFrom = `${selectedMonth}-01`;
+  const selectedMonthEnd = new Date(
+    Date.UTC(selectedYear, selectedMonthNumber, 0)
+  )
+    .toISOString()
+    .slice(0, 10);
+  const sheetTo =
+    selectedMonth === today.slice(0, 7) ? today : selectedMonthEnd;
   const [viewUserId, setViewUserId] = useState(() => {
     if (isProjectView && roster.length > 0) {
       return roster[0].id;
@@ -71,7 +83,7 @@ export default function Ratings({
     return deptId ? '' : user?.id || '';
   });
 
-  const activeDeptId = deptId || viewDepartmentId;
+  const activeDeptId = requestedDeptId || viewDepartmentId;
 
   useEffect(() => {
     if (isProjectView) {
@@ -105,6 +117,11 @@ export default function Ratings({
     queryFn: () => api.get('/departments').then((res) => res.data),
     enabled: isManager && !isProjectView,
   });
+  useEffect(() => {
+    if (isAdmin || isProjectView || activeDeptId || departments.length === 0)
+      return;
+    setViewDepartmentId(departments[0].id);
+  }, [activeDeptId, departments, isAdmin, isProjectView]);
 
   const {
     data: sheetData,
@@ -112,19 +129,14 @@ export default function Ratings({
     error: sheetError,
     refetch: refetchSheet,
   } = useQuery({
-    queryKey: [
-      'departmentRatingsSheet',
-      activeDeptId || 'all',
-      sheetFrom,
-      sheetTo,
-    ],
+    queryKey: ['departmentRatingsSheet', activeDeptId, sheetFrom, sheetTo],
     queryFn: () =>
       api
-        .get(`/ratings/department/${activeDeptId || 'all'}/sheet`, {
+        .get(`/ratings/department/${activeDeptId}/sheet`, {
           params: { from: sheetFrom, to: sheetTo },
         })
         .then((res) => res.data),
-    enabled: viewAll && !isProjectView,
+    enabled: viewAll && !!activeDeptId,
   });
 
   const {
@@ -188,7 +200,7 @@ export default function Ratings({
   const ratingUserOptions = isProjectView
     ? roster.map((m) => ({
         value: m.id,
-        label: `${m.full_name || m.email} (${m.role})`,
+        label: `${m.full_name || m.email} (${ROLE_LABEL[m.role] || m.role})`,
       }))
     : [
         {
@@ -199,7 +211,7 @@ export default function Ratings({
           .filter((m) => m.id !== user?.id)
           .map((m) => ({
             value: m.id,
-            label: `${m.full_name || m.email} (${m.role})`,
+            label: `${m.full_name || m.email} (${ROLE_LABEL[m.role] || m.role})`,
           })),
       ];
 
@@ -328,47 +340,80 @@ export default function Ratings({
             <div className="space-y-5">
               {isManager ? (
                 <>
-                  {!isProjectView && (
-                    <div>
-                      <label className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">
-                        Department
-                      </label>
+                  {!isProjectView ? (
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_12rem] lg:items-end">
+                      <div className="min-w-0">
+                        <label className="mb-2 block text-xs font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                          Department
+                        </label>
 
-                      <CustomSelect
-                        value={activeDeptId}
-                        onChange={handleViewDepartmentChange}
-                        options={departmentOptions}
-                        placeholder="All departments"
-                        className="w-full"
-                        searchable={true}
-                      />
+                        <CustomSelect
+                          value={activeDeptId}
+                          onChange={handleViewDepartmentChange}
+                          options={departmentOptions}
+                          placeholder="All departments"
+                          className="w-full"
+                          searchable={true}
+                        />
+                      </div>
+
+                      <div className="min-w-0">
+                        <label className="mb-2 block text-xs font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                          Team Member
+                        </label>
+
+                        <CustomSelect
+                          value={viewUserId}
+                          onChange={setViewUserId}
+                          options={ratingUserOptions}
+                          placeholder="Select member"
+                          className="w-full"
+                          searchable={true}
+                        />
+                      </div>
+
+                      {activeDeptId && (
+                        <div className="flex w-full items-end justify-start">
+                          <button
+                            type="button"
+                            onClick={() => setViewAll((current) => !current)}
+                            className="w-full whitespace-nowrap rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-extrabold text-slate-950 hover:bg-amber-400 sm:w-auto"
+                          >
+                            {viewAll ? 'Individual View' : 'View All'}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,32rem)_12rem] sm:items-end">
+                      <div className="min-w-0">
+                        <label className="mb-2 block text-xs font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                          Team Member
+                        </label>
+
+                        <CustomSelect
+                          value={viewUserId}
+                          onChange={setViewUserId}
+                          options={ratingUserOptions}
+                          placeholder="Select member"
+                          className="w-full"
+                          searchable={true}
+                        />
+                      </div>
+
+                      {activeDeptId && (
+                        <div className="flex w-full items-end justify-start">
+                          <button
+                            type="button"
+                            onClick={() => setViewAll((current) => !current)}
+                            className="w-full whitespace-nowrap rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-extrabold text-slate-950 hover:bg-amber-400 sm:w-auto"
+                          >
+                            {viewAll ? 'Individual View' : 'View All'}
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
-
-                  <div>
-                    <label className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">
-                      Team Member
-                    </label>
-
-                    <CustomSelect
-                      value={viewUserId}
-                      onChange={setViewUserId}
-                      options={ratingUserOptions}
-                      placeholder="Select member"
-                      className="w-full"
-                      searchable={true}
-                      autoSelectOnMatch={isManager}
-                    />
-                    {!isProjectView && (
-                      <button
-                        type="button"
-                        onClick={() => setViewAll((current) => !current)}
-                        className="mt-3 rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-extrabold text-slate-950 hover:bg-amber-400"
-                      >
-                        {viewAll ? 'Individual View' : 'View All'}
-                      </button>
-                    )}
-                  </div>
                 </>
               ) : (
                 <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800/50 px-4 py-3 rounded-2xl border border-slate-200 dark:border-slate-700">
@@ -388,10 +433,8 @@ export default function Ratings({
               <DepartmentRatingsSheet
                 departmentName={activeDepartment?.name}
                 data={sheetData}
-                from={sheetFrom}
-                to={sheetTo}
-                onFromChange={setSheetFrom}
-                onToChange={setSheetTo}
+                selectedMonth={selectedMonth}
+                onMonthChange={setSelectedMonth}
                 isLoading={sheetIsLoading}
                 error={sheetError}
                 onRetry={refetchSheet}
@@ -466,7 +509,7 @@ export default function Ratings({
           {canRate && (
             <RatingForm
               roster={isProjectView ? roster : undefined}
-              departmentId={deptId}
+              departmentId={activeDeptId}
             />
           )}
         </>
@@ -475,7 +518,7 @@ export default function Ratings({
           {canRate && (
             <RatingForm
               roster={isProjectView ? roster : undefined}
-              departmentId={deptId}
+              departmentId={activeDeptId}
             />
           )}
 
@@ -517,47 +560,76 @@ export default function Ratings({
             <div className="space-y-5">
               {isManager ? (
                 <>
-                  {!isProjectView && (
-                    <div>
-                      <label className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">
-                        Department
-                      </label>
+                  {!isProjectView ? (
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_12rem] lg:items-end">
+                      <div className="min-w-0">
+                        <label className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">
+                          Department
+                        </label>
 
-                      <CustomSelect
-                        value={activeDeptId}
-                        onChange={handleViewDepartmentChange}
-                        options={departmentOptions}
-                        placeholder="All departments"
-                        className="w-full"
-                        searchable={true}
-                      />
+                        <CustomSelect
+                          value={activeDeptId}
+                          onChange={handleViewDepartmentChange}
+                          options={departmentOptions}
+                          placeholder="All departments"
+                          className="w-full"
+                          searchable={true}
+                        />
+                      </div>
+
+                      <div className="min-w-0">
+                        <label className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">
+                          Team Member
+                        </label>
+
+                        <CustomSelect
+                          value={viewUserId}
+                          onChange={setViewUserId}
+                          options={ratingUserOptions}
+                          placeholder="Select member"
+                          className="w-full"
+                          searchable={true}
+                        />
+                      </div>
+
+                      {activeDeptId && (
+                        <button
+                          type="button"
+                          onClick={() => setViewAll((current) => !current)}
+                          className="w-full justify-self-start whitespace-nowrap rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-extrabold text-slate-950 hover:bg-amber-400 sm:w-auto"
+                        >
+                          {viewAll ? 'Individual View' : 'View All'}
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,32rem)_12rem] sm:items-end">
+                      <div className="min-w-0">
+                        <label className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">
+                          Team Member
+                        </label>
+
+                        <CustomSelect
+                          value={viewUserId}
+                          onChange={setViewUserId}
+                          options={ratingUserOptions}
+                          placeholder="Select member"
+                          className="w-full"
+                          searchable={true}
+                        />
+                      </div>
+
+                      {activeDeptId && (
+                        <button
+                          type="button"
+                          onClick={() => setViewAll((current) => !current)}
+                          className="w-full justify-self-start whitespace-nowrap rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-extrabold text-slate-950 hover:bg-amber-400 sm:w-auto"
+                        >
+                          {viewAll ? 'Individual View' : 'View All'}
+                        </button>
+                      )}
                     </div>
                   )}
-
-                  <div>
-                    <label className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">
-                      Team Member
-                    </label>
-
-                    <CustomSelect
-                      value={viewUserId}
-                      onChange={setViewUserId}
-                      options={ratingUserOptions}
-                      placeholder="Select member"
-                      className="w-full"
-                      searchable={true}
-                      autoSelectOnMatch={isManager}
-                    />
-                    {!isProjectView && (
-                      <button
-                        type="button"
-                        onClick={() => setViewAll((current) => !current)}
-                        className="mt-3 rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-extrabold text-slate-950 hover:bg-amber-400"
-                      >
-                        {viewAll ? 'Individual View' : 'View All'}
-                      </button>
-                    )}
-                  </div>
                 </>
               ) : (
                 <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800/50 px-4 py-3 rounded-2xl border border-slate-200 dark:border-slate-700">
@@ -577,10 +649,8 @@ export default function Ratings({
               <DepartmentRatingsSheet
                 departmentName={activeDepartment?.name}
                 data={sheetData}
-                from={sheetFrom}
-                to={sheetTo}
-                onFromChange={setSheetFrom}
-                onToChange={setSheetTo}
+                selectedMonth={selectedMonth}
+                onMonthChange={setSelectedMonth}
                 isLoading={sheetIsLoading}
                 error={sheetError}
                 onRetry={refetchSheet}
