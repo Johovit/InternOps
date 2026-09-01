@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../lib/axios';
+import { resolveUploadUrl } from '../lib/uploadUrl';
 import useAuthStore from '../store/auth';
 import { Users } from 'lucide-react';
 import CustomSelect from '../components/CustomSelect';
@@ -224,7 +225,7 @@ function StatCard({ label, value, sub }) {
 function Avatar({ m, size = 'w-10 h-10' }) {
   return m.avatar_url ? (
     <img
-      src={m.avatar_url}
+      src={resolveUploadUrl(m.avatar_url)}
       alt=""
       className={`${size} rounded-2xl object-cover border border-slate-200 dark:border-slate-700 shadow-sm`}
     />
