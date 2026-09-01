@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import api from '../lib/axios';
+import { resolveUploadUrl } from '../lib/uploadUrl';
 import {
   Card,
   Btn,
@@ -264,8 +265,9 @@ export default function Profile() {
         });
   };
   const isAdmin = profile?.role === 'ADMIN';
-  const profileAvatarUrl =
-    profile?.avatar_url || (isAdmin ? '/admin-default-avatar.svg' : null);
+  const profileAvatarUrl = resolveUploadUrl(
+    profile?.avatar_url || (isAdmin ? '/admin-default-avatar.svg' : null)
+  );
   const scopeLabel = isAdmin ? 'Access scope' : 'Department';
   const accessScope = isAdmin
     ? 'Platform-wide'

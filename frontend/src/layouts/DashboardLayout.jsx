@@ -37,6 +37,7 @@ import { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import api from '../lib/axios';
+import { resolveUploadUrl } from '../lib/uploadUrl';
 import { connectSocket, disconnectSocket } from '../lib/socket';
 import { UserAvatar, ConfirmationModal } from '../components/ui';
 import useAuthStore from '../store/auth';
@@ -254,8 +255,6 @@ export default function DashboardLayout() {
 
     const socket = connectSocket(accessToken);
 
-    // Live-update the bell badge the instant a new notification arrives,
-    // instead of waiting for the next 30s poll (#1753).
     const handleNotificationReceived = (payload) => {
       if (typeof payload?.unreadCount === 'number') {
         queryClient.setQueryData(['notifications', 'unread-count'], {
@@ -263,8 +262,6 @@ export default function DashboardLayout() {
         });
       }
 
-      // Keep any mounted notifications list fresh too, without refetching
-      // the unread-count query we just updated optimistically above.
       queryClient.invalidateQueries({
         predicate: (query) =>
           query.queryKey[0] === 'notifications' &&
@@ -332,8 +329,9 @@ export default function DashboardLayout() {
   const unreadCount = unreadData?.unread || 0;
 
   const displayName = me?.full_name || user?.fullName || user?.email;
-  const avatarUrl =
-    me?.avatar_url || (role === 'ADMIN' ? '/admin-default-avatar.svg' : null);
+  const avatarUrl = resolveUploadUrl(
+    me?.avatar_url || (role === 'ADMIN' ? '/admin-default-avatar.svg' : null)
+  );
 
   useEffect(() => {
     localStorage.setItem('sidebar', collapsed ? 'collapsed' : 'open');
