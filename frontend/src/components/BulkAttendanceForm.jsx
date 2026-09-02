@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import api from '../lib/axios';
 import { Card, Btn, Input, ConfirmationModal } from './ui';
@@ -20,6 +20,11 @@ export default function BulkAttendanceForm({
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
   const [pendingEntries, setPendingEntries] = useState(null);
+  useEffect(() => {
+    if (!propDeptId || propDeptId === departmentId) return;
+    setDepartmentId(propDeptId);
+    setSelectedUsers([]);
+  }, [propDeptId, departmentId]);
 
   const FILL_CONFIRM_THRESHOLD = 10;
 
@@ -69,7 +74,7 @@ export default function BulkAttendanceForm({
   const statusOptions = [
     { value: 'PRESENT', label: 'Present' },
     { value: 'ABSENT', label: 'Absent' },
-    { value: 'HALF_DAY', label: 'Half Day' },
+    { value: 'INFORMED', label: 'Informed absence' },
   ];
 
   const departmentOptions = [

@@ -9,6 +9,14 @@ async function updateAvatarUrl(userId, avatarUrl) {
     userId,
   ]);
 }
+async function getAvatarUrl(userId) {
+  const { rows } = await pool.query(
+    'SELECT avatar_url FROM users WHERE id = $1',
+    [userId]
+  );
+
+  return rows[0]?.avatar_url || null;
+}
 
 async function getAvatarUrl(userId) {
   const { rows } = await pool.query(
@@ -102,6 +110,7 @@ async function deleteFile(dbSavedPath) {
 }
 
 module.exports = {
+  getAvatarUrl,
   updateAvatarUrl,
   getAvatarUrl,
   createImage,
