@@ -12,7 +12,10 @@ const { send: sendNotification } = require('../notifications/repository');
 const { z } = require('zod');
 const suggestionRoutes = require('./suggestion.routes');
 const overallService = require('./overall.service');
-const { validateFourWeekPeriod } = require('./ratingPeriods');
+const {
+  isCurrentFourWeekPeriod,
+  validateFourWeekPeriod,
+} = require('./ratingPeriods');
 
 module.exports = async function ratingsRoutes(fastify) {
   await fastify.register(suggestionRoutes);
@@ -47,6 +50,11 @@ module.exports = async function ratingsRoutes(fastify) {
           .send({ error: 'Select a valid four-week rating period' });
       }
 
+      if (!isCurrentFourWeekPeriod(rating_period_start, rating_period_end)) {
+        return reply.status(400).send({
+          error: 'Ratings can only be submitted for the current week',
+        });
+      }
       if (req.user.id === rated_user_id) {
         return reply.status(400).send({ error: 'You cannot rate yourself' });
       }

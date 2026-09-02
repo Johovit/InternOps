@@ -123,7 +123,12 @@ async function getDepartmentRatingsSheet({
   }
 
   return {
-    available_months: availableMonthsResult.rows.map((row) => row.month),
+    available_months: [
+      selectedMonth,
+      ...availableMonthsResult.rows
+        .map((row) => row.month)
+        .filter((month) => month !== selectedMonth),
+    ],
     members: members.map((member) => {
       const userRatings = grouped.get(member.id) || [];
       const newestByWeek = new Map();

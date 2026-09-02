@@ -11,6 +11,7 @@ export default function CustomSelect({
   disabled = false,
   searchable = false,
   autoSelectOnMatch = false,
+  wrapOptions = false,
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -167,7 +168,13 @@ export default function CustomSelect({
                     }`}
                   />
 
-                  <span className="relative z-10 truncate pl-1">
+                  <span
+                    className={`relative z-10 min-w-0 pl-1 ${
+                      wrapOptions
+                        ? 'whitespace-normal break-words py-1 leading-5'
+                        : 'truncate'
+                    }`}
+                  >
                     {option.label}
                   </span>
 
@@ -201,7 +208,9 @@ export default function CustomSelect({
           } disabled:opacity-60 disabled:cursor-not-allowed`}
         >
           <span
-            className={selected ? '' : 'text-slate-400 dark:text-slate-500'}
+            className={`${
+              selected ? '' : 'text-slate-400 dark:text-slate-500'
+            } ${wrapOptions ? 'whitespace-normal break-words py-2 leading-5' : ''}`}
           >
             {selected ? selected.label : placeholder}
           </span>

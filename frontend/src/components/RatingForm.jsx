@@ -6,8 +6,10 @@ import useAuthStore from '../store/auth';
 import { Card, Btn, Textarea } from './ui';
 import RatingSuggestionCard from './RatingSuggestionCard';
 import CustomSelect from './CustomSelect';
+import CustomMonthPicker from './CustomMonthPicker';
 import {
   formatRatingPeriod,
+  getCurrentFourWeekRatingPeriod,
   getFourWeekRatingPeriods,
 } from '../utils/ratingPeriods';
 
@@ -20,15 +22,13 @@ export default function RatingForm({ roster, departmentId: propDeptId }) {
   const [userId, setUserId] = useState('');
   const [score, setScore] = useState(null);
   const [remarks, setRemarks] = useState('');
-  const today = new Date().toISOString().slice(0, 10);
-  const [ratingMonth, setRatingMonth] = useState(today.slice(0, 7));
+  const currentRatingPeriod = getCurrentFourWeekRatingPeriod();
+  const currentMonth = currentRatingPeriod.month;
+  const currentWeekIndex = currentRatingPeriod.index;
+  const [ratingMonth, setRatingMonth] = useState(currentMonth);
   const periods = getFourWeekRatingPeriods(ratingMonth);
-  const currentWeekIndex = Math.min(
-    3,
-    Math.floor((Number(today.slice(8, 10)) - 1) / 7)
-  );
   const [ratingWeek, setRatingWeek] = useState(String(currentWeekIndex));
-  const selectedPeriod = periods[Number(ratingWeek)] || periods[0];
+  const selectedPeriod = currentRatingPeriod.period;
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
 
@@ -310,18 +310,16 @@ export default function RatingForm({ roster, departmentId: propDeptId }) {
             <label className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">
               Rating Month
             </label>
-            <input
-              type="month"
+            <CustomMonthPicker
               value={ratingMonth}
-              max={today.slice(0, 7)}
-              onChange={(event) => {
-                const month = event.target.value;
+              onChange={(month) => {
                 setRatingMonth(month);
-                const day =
-                  month === today.slice(0, 7) ? Number(today.slice(8, 10)) : 1;
-                setRatingWeek(String(Math.min(3, Math.floor((day - 1) / 7))));
+                setRatingWeek(String(currentWeekIndex));
               }}
-              className="w-full rounded-2xl border border-slate-200 bg-white p-3 text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+              min={currentMonth}
+              max={currentMonth}
+              allowedMonths={[currentMonth]}
+              className="w-full [&_button]:min-h-[52px] [&_button]:rounded-2xl [&_button]:px-5"
               disabled={rateMutation.isPending}
             />
           </div>
@@ -332,12 +330,15 @@ export default function RatingForm({ roster, departmentId: propDeptId }) {
             <CustomSelect
               value={ratingWeek}
               onChange={setRatingWeek}
-              options={periods.map((period, index) => ({
-                value: String(index),
-                label: formatRatingPeriod(period),
-              }))}
+              options={[
+                {
+                  value: String(currentWeekIndex),
+                  label: formatRatingPeriod(periods[currentWeekIndex]),
+                },
+              ]}
               className="w-full"
               disabled={rateMutation.isPending}
+              wrapOptions
             />
           </div>
         </div>

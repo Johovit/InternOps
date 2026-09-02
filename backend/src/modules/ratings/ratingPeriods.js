@@ -16,6 +16,23 @@ function getFourWeekIndex(dateValue) {
   if (!Number.isInteger(day) || day < 1 || day > 31) return -1;
   return day <= 7 ? 0 : day <= 14 ? 1 : day <= 21 ? 2 : 3;
 }
+
+function getCurrentFourWeekRatingPeriod(now = new Date()) {
+  const year = now.getUTCFullYear();
+  const month = String(now.getUTCMonth() + 1).padStart(2, '0');
+  const monthValue = `${year}-${month}`;
+  const weekIndex = getFourWeekIndex(now.toISOString().slice(0, 10));
+  return {
+    month: monthValue,
+    index: weekIndex,
+    period: getFourWeekRatingPeriods(monthValue)[weekIndex],
+  };
+}
+function isCurrentFourWeekPeriod(start, end, now = new Date()) {
+  const current = getCurrentFourWeekRatingPeriod(now).period;
+  return Boolean(current && current.start === start && current.end === end);
+}
+
 function validateFourWeekPeriod(start, end) {
   const month = String(start || '').slice(0, 7);
   return getFourWeekRatingPeriods(month).some(
@@ -26,4 +43,6 @@ module.exports = {
   getFourWeekRatingPeriods,
   getFourWeekIndex,
   validateFourWeekPeriod,
+  getCurrentFourWeekRatingPeriod,
+  isCurrentFourWeekPeriod,
 };

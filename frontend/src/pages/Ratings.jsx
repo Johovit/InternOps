@@ -64,7 +64,8 @@ export default function Ratings({
   const [viewDepartmentId, setViewDepartmentId] = useState(requestedDeptId);
   const [viewAll, setViewAll] = useState(false);
   const today = new Date().toISOString().slice(0, 10);
-  const [selectedMonth, setSelectedMonth] = useState(today.slice(0, 7));
+  const currentMonth = today.slice(0, 7);
+  const [selectedMonth, setSelectedMonth] = useState(currentMonth);
   const [selectedYear, selectedMonthNumber] = selectedMonth
     .split('-')
     .map(Number);
@@ -139,25 +140,8 @@ export default function Ratings({
         .then((res) => res.data),
     enabled: viewAll && !!activeDeptId,
   });
-
-  const sheetAvailableMonths = sheetData?.available_months || [];
-  const sheetMatchesSelectedMonth =
-    !!sheetData &&
-    (sheetAvailableMonths.length === 0 ||
-      sheetAvailableMonths.includes(selectedMonth));
-  const validSheetData = sheetMatchesSelectedMonth ? sheetData : null;
-  const ratingsSheetIsPending =
-    viewAll && !!activeDeptId && (sheetIsLoading || !sheetMatchesSelectedMonth);
-
-  useEffect(() => {
-    if (
-      !sheetAvailableMonths.length ||
-      sheetAvailableMonths.includes(selectedMonth)
-    ) {
-      return;
-    }
-    setSelectedMonth(sheetAvailableMonths[0]);
-  }, [selectedMonth, sheetData?.available_months]);
+  const validSheetData = sheetData || null;
+  const ratingsSheetIsPending = viewAll && !!activeDeptId && sheetIsLoading;
 
   const {
     data: ratings,
@@ -454,6 +438,7 @@ export default function Ratings({
                 departmentName={activeDepartment?.name}
                 data={validSheetData}
                 selectedMonth={selectedMonth}
+                currentMonth={currentMonth}
                 onMonthChange={setSelectedMonth}
                 isLoading={ratingsSheetIsPending || sheetIsLoading}
                 isRefreshing={sheetIsFetching && !!validSheetData}
@@ -671,6 +656,7 @@ export default function Ratings({
                 departmentName={activeDepartment?.name}
                 data={validSheetData}
                 selectedMonth={selectedMonth}
+                currentMonth={currentMonth}
                 onMonthChange={setSelectedMonth}
                 isLoading={ratingsSheetIsPending || sheetIsLoading}
                 isRefreshing={sheetIsFetching && !!validSheetData}

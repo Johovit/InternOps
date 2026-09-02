@@ -1,4 +1,4 @@
-﻿import { Fragment, useLayoutEffect, useMemo, useState } from 'react';
+import { Fragment, useLayoutEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Expand, Search, Star, X } from 'lucide-react';
 import DownloadDataMenu from '../DownloadDataMenu';
@@ -256,6 +256,7 @@ export default function DepartmentRatingsSheet({
   departmentName,
   data,
   selectedMonth,
+  currentMonth,
   onMonthChange,
   isLoading,
   isRefreshing = false,
@@ -344,7 +345,19 @@ export default function DepartmentRatingsSheet({
         .map((member) => member.id)
     ).size;
   }, [data?.members, search]);
-  const availableMonths = data?.available_months || [];
+  const availableMonths = useMemo(
+    () =>
+      [
+        ...new Set([
+          currentMonth,
+          selectedMonth,
+          ...(data?.available_months || []),
+        ]),
+      ]
+        .filter(Boolean)
+        .sort((a, b) => b.localeCompare(a)),
+    [currentMonth, data?.available_months, selectedMonth]
+  );
 
   useLayoutEffect(() => {
     if (!fullScreen) return undefined;
