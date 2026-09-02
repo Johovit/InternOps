@@ -392,6 +392,8 @@ async function execute(workbookBuffer, emailBuffer, options) {
       peopleReceivingAttendance: 0,
       attendanceCreated: 0,
       attendanceUnchanged: 0,
+      attendanceKeptExisting: 0,
+      attendanceUpdatedFromWorkbook: 0,
       internCodesCorrected: 0,
       ratingsCreated: 0,
       ratingsUnchanged: 0,
@@ -689,6 +691,8 @@ async function execute(workbookBuffer, emailBuffer, options) {
         date: item.date,
         status: item.status,
         remarks: item.remarks || null,
+        sourceSheet: item.sourceSheet || null,
+        sourceRow: item.sourceRow || null,
       }))
     );
     report(options, 'CHECKING_EXISTING_ATTENDANCE', {
@@ -725,10 +729,56 @@ async function execute(workbookBuffer, emailBuffer, options) {
       ) {
         summary.attendanceUnchanged++;
       } else {
-        throw Object.assign(
-          new Error(`Attendance conflict for ${row.name} on ${row.date}`),
-          { statusCode: 409 }
+        const conflictId = `DATABASE_ATTENDANCE|${row.userId}|${row.date}`;
+        const resolution = options.attendanceResolutions?.[conflictId];
+        if (resolution === 'KEEP_EXISTING') {
+          summary.attendanceKeptExisting++;
+          continue;
+        }
+        if (resolution !== 'USE_WORKBOOK') {
+          throw Object.assign(
+            new Error(
+              `Attendance resolution required for ${row.name} on ${row.date}`
+            ),
+            { statusCode: 409, code: 'ATTENDANCE_RESOLUTION_REQUIRED' }
+          );
+        }
+        const updatedAttendance = (
+          await client.query(
+            `UPDATE attendance
+             SET status=$1,remarks=$2,marked_by=$3
+             WHERE user_id=$4 AND date=$5::date AND deleted_at IS NULL
+             RETURNING id`,
+            [row.status, row.remarks, options.requesterId, row.userId, row.date]
+          )
+        ).rows[0];
+        if (!updatedAttendance) {
+          throw Object.assign(
+            new Error(
+              `Attendance changed after preview for ${row.name} on ${row.date}`
+            ),
+            { statusCode: 409, code: 'ATTENDANCE_CHANGED_AFTER_PREVIEW' }
+          );
+        }
+        await createAuditLog(
+          {
+            userId: options.requesterId,
+            action: 'WORKBOOK_ATTENDANCE_REPLACED',
+            resourceType: 'attendance',
+            resourceId: updatedAttendance.id,
+            details: {
+              date: row.date,
+              oldStatus: old.status,
+              oldRemarks: old.remarks || null,
+              newStatus: row.status,
+              newRemarks: row.remarks || null,
+              sourceSheet: row.sourceSheet || null,
+              sourceRow: row.sourceRow || null,
+            },
+          },
+          client
         );
+        summary.attendanceUpdatedFromWorkbook++;
       }
     }
 

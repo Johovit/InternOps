@@ -12,6 +12,7 @@ const { send: sendNotification } = require('../notifications/repository');
 const { z } = require('zod');
 const suggestionRoutes = require('./suggestion.routes');
 const overallService = require('./overall.service');
+const { validateFourWeekPeriod } = require('./ratingPeriods');
 
 module.exports = async function ratingsRoutes(fastify) {
   await fastify.register(suggestionRoutes);
@@ -25,13 +26,26 @@ module.exports = async function ratingsRoutes(fastify) {
       preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN'), sanitize],
     },
     async (req, reply) => {
-      const { rated_user_id, score, remarks } = z
+      const {
+        rated_user_id,
+        score,
+        remarks,
+        rating_period_start,
+        rating_period_end,
+      } = z
         .object({
           rated_user_id: z.string().uuid(),
           score: z.coerce.number().multipleOf(0.1).min(1).max(10),
           remarks: z.string().max(2000).optional(),
+          rating_period_start: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+          rating_period_end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
         })
         .parse(req.body);
+      if (!validateFourWeekPeriod(rating_period_start, rating_period_end)) {
+        return reply
+          .status(400)
+          .send({ error: 'Select a valid four-week rating period' });
+      }
 
       if (req.user.id === rated_user_id) {
         return reply.status(400).send({ error: 'You cannot rate yourself' });
@@ -50,7 +64,9 @@ module.exports = async function ratingsRoutes(fastify) {
         rated_user_id,
         req.user.id,
         score,
-        remarks || null
+        remarks || null,
+        rating_period_start,
+        rating_period_end
       );
 
       req.auditOnResponse = {
@@ -59,7 +75,12 @@ module.exports = async function ratingsRoutes(fastify) {
         action: 'RATING_GIVEN',
         resourceType: 'rating',
         resourceId: rating.id,
-        details: { target: rated_user_id, score },
+        details: {
+          target: rated_user_id,
+          score,
+          rating_period_start,
+          rating_period_end,
+        },
       };
 
       await sendNotification(

@@ -75,7 +75,7 @@ export function Card({ children, className = '', hover = false, ...props }) {
   return (
     <div
       {...props}
-      className={`relative overflow-hidden rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:shadow-none text-slate-900 dark:text-white ${
+      className={`relative overflow-hidden rounded-3xl border border-slate-200/90 dark:border-slate-700 bg-gradient-to-br from-white via-white to-slate-50/80 dark:bg-none dark:bg-slate-900 shadow-[0_16px_38px_-24px_rgba(15,23,42,0.34),0_5px_14px_-10px_rgba(79,70,229,0.16)] dark:shadow-none text-slate-900 dark:text-white ${
         hover ? 'card-hover cursor-pointer' : ''
       } ${className}`}
     >

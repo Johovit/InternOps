@@ -6,6 +6,10 @@ import useAuthStore from '../store/auth';
 import { Card, Btn, Textarea } from './ui';
 import RatingSuggestionCard from './RatingSuggestionCard';
 import CustomSelect from './CustomSelect';
+import {
+  formatRatingPeriod,
+  getFourWeekRatingPeriods,
+} from '../utils/ratingPeriods';
 
 export default function RatingForm({ roster, departmentId: propDeptId }) {
   const queryClient = useQueryClient();
@@ -16,6 +20,15 @@ export default function RatingForm({ roster, departmentId: propDeptId }) {
   const [userId, setUserId] = useState('');
   const [score, setScore] = useState(null);
   const [remarks, setRemarks] = useState('');
+  const today = new Date().toISOString().slice(0, 10);
+  const [ratingMonth, setRatingMonth] = useState(today.slice(0, 7));
+  const periods = getFourWeekRatingPeriods(ratingMonth);
+  const currentWeekIndex = Math.min(
+    3,
+    Math.floor((Number(today.slice(8, 10)) - 1) / 7)
+  );
+  const [ratingWeek, setRatingWeek] = useState(String(currentWeekIndex));
+  const selectedPeriod = periods[Number(ratingWeek)] || periods[0];
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
 
@@ -145,7 +158,13 @@ export default function RatingForm({ roster, departmentId: propDeptId }) {
 
   const handleConfirmSubmit = () => {
     setIsModalOpen(false);
-    rateMutation.mutate({ rated_user_id: userId, score, remarks });
+    rateMutation.mutate({
+      rated_user_id: userId,
+      score,
+      remarks,
+      rating_period_start: selectedPeriod.start,
+      rating_period_end: selectedPeriod.end,
+    });
   };
 
   const handleBackdropClick = (e) => {
@@ -182,8 +201,9 @@ export default function RatingForm({ roster, departmentId: propDeptId }) {
             <strong className="text-indigo-600 dark:text-indigo-400">
               {score == null ? 'Not selected' : `${score}/10`}
             </strong>{' '}
-            for <strong>{selectedUserLabel}</strong>? Ratings are permanent and
-            immutable.
+            for <strong>{selectedUserLabel}</strong> in{' '}
+            <strong>{formatRatingPeriod(selectedPeriod)}</strong>? Ratings are
+            permanent and immutable.
           </p>
           <div className="flex items-center justify-end gap-3">
             <Btn
@@ -282,6 +302,42 @@ export default function RatingForm({ roster, departmentId: propDeptId }) {
               className="w-full"
               disabled={rateMutation.isPending || (!roster && !departmentId)}
               searchable={true}
+            />
+          </div>
+        </div>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div>
+            <label className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">
+              Rating Month
+            </label>
+            <input
+              type="month"
+              value={ratingMonth}
+              max={today.slice(0, 7)}
+              onChange={(event) => {
+                const month = event.target.value;
+                setRatingMonth(month);
+                const day =
+                  month === today.slice(0, 7) ? Number(today.slice(8, 10)) : 1;
+                setRatingWeek(String(Math.min(3, Math.floor((day - 1) / 7))));
+              }}
+              className="w-full rounded-2xl border border-slate-200 bg-white p-3 text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+              disabled={rateMutation.isPending}
+            />
+          </div>
+          <div>
+            <label className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">
+              Rating Week
+            </label>
+            <CustomSelect
+              value={ratingWeek}
+              onChange={setRatingWeek}
+              options={periods.map((period, index) => ({
+                value: String(index),
+                label: formatRatingPeriod(period),
+              }))}
+              className="w-full"
+              disabled={rateMutation.isPending}
             />
           </div>
         </div>

@@ -1,19 +1,30 @@
 const pool = require('../../config/db');
 const { assertActivityAllowed } = require('../team/lifecycle');
+const {
+  getFourWeekIndex,
+  getFourWeekRatingPeriods,
+} = require('./ratingPeriods');
 
-async function addRating(rated, by, score, remarks) {
-  await assertActivityAllowed(
-    pool,
-    rated,
-    new Date().toISOString().slice(0, 10)
-  );
-  const res = await pool.query(
-    'INSERT INTO ratings (rated_user_id, rated_by, score, remarks) VALUES ($1,$2,$3,$4) RETURNING *',
-    [rated, by, score, remarks]
-  );
-  return res.rows[0];
+async function addRating(rated, by, score, remarks, periodStart, periodEnd) {
+  await assertActivityAllowed(pool, rated, periodEnd);
+  const periodKey = `${rated}:${periodStart}:${periodEnd}`;
+  try {
+    const res = await pool.query(
+      `INSERT INTO ratings (rated_user_id,rated_by,score,remarks,rating_period_start,rating_period_end,manual_period_key)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      [rated, by, score, remarks, periodStart, periodEnd, periodKey]
+    );
+    return res.rows[0];
+  } catch (error) {
+    if (error.code === '23505') {
+      throw Object.assign(
+        new Error('A rating already exists for this member and week'),
+        { statusCode: 409 }
+      );
+    }
+    throw error;
+  }
 }
-
 async function getRatings(userId) {
   const res = await pool.query(
     'SELECT * FROM ratings WHERE rated_user_id=$1 AND deleted_at IS NULL ORDER BY created_at DESC',
@@ -103,6 +114,8 @@ async function getDepartmentRatingsSheet({
     [memberIds, from, to]
   );
 
+  const selectedMonth = String(from).slice(0, 7);
+  const officialPeriods = getFourWeekRatingPeriods(selectedMonth);
   const grouped = new Map();
   for (const row of ratingsResult.rows) {
     if (!grouped.has(row.rated_user_id)) grouped.set(row.rated_user_id, []);
@@ -113,6 +126,28 @@ async function getDepartmentRatingsSheet({
     available_months: availableMonthsResult.rows.map((row) => row.month),
     members: members.map((member) => {
       const userRatings = grouped.get(member.id) || [];
+      const newestByWeek = new Map();
+      for (const rating of [...userRatings].sort(
+        (a, b) => new Date(b.created_at) - new Date(a.created_at)
+      )) {
+        const startValue =
+          rating.rating_period_start || String(rating.created_at).slice(0, 10);
+        const weekIndex = getFourWeekIndex(startValue);
+        if (weekIndex >= 0 && !newestByWeek.has(weekIndex))
+          newestByWeek.set(weekIndex, rating);
+      }
+      const normalizedRatings = officialPeriods
+        .map((period, index) => {
+          const rating = newestByWeek.get(index);
+          return rating
+            ? {
+                ...rating,
+                rating_period_start: period.start,
+                rating_period_end: period.end,
+              }
+            : null;
+        })
+        .filter(Boolean);
       const latest = userRatings.find((rating) => Number(rating.recency) === 1);
       const average = userRatings.length
         ? userRatings.reduce((sum, rating) => sum + Number(rating.score), 0) /
@@ -126,7 +161,7 @@ async function getDepartmentRatingsSheet({
         latest_score: latest ? Number(latest.score) : null,
         latest_remarks: latest?.remarks || null,
         latest_created_at: latest?.created_at || null,
-        weekly_ratings: userRatings.map((rating) => ({
+        weekly_ratings: normalizedRatings.map((rating) => ({
           score: rating.score == null ? null : Number(rating.score),
           remarks: rating.remarks || null,
           created_at: rating.created_at,

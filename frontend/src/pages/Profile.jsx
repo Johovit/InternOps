@@ -14,6 +14,7 @@ import {
   MapPin,
   CalendarDays,
   BriefcaseBusiness,
+  Hash,
   MonitorSmartphone,
   ArrowRight,
 } from 'lucide-react';
@@ -284,6 +285,15 @@ export default function Profile() {
     POSITION_LABEL[profile?.role] || profile?.position || 'Not added';
   const accountDetails = [
     { label: scopeLabel, value: accessScope, icon: Building2 },
+    ...(!isAdmin
+      ? [
+          {
+            label: 'Intern Code',
+            value: profile?.intern_code || 'Not provided',
+            icon: Hash,
+          },
+        ]
+      : []),
     { label: 'Position', value: positionLabel, icon: BriefcaseBusiness },
     ...(profile?.location
       ? [{ label: 'Location', value: profile.location, icon: MapPin }]
@@ -446,7 +456,7 @@ export default function Profile() {
           </div>
           <div
             className={`grid shrink-0 grid-cols-1 gap-2 ${
-              accountDetails.length === 4
+              accountDetails.length >= 4
                 ? 'sm:grid-cols-2 xl:w-[500px]'
                 : 'sm:grid-cols-3 xl:w-[500px]'
             }`}

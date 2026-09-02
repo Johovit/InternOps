@@ -113,8 +113,11 @@ describe('attendance grid contracts', () => {
     expect(sheet).toContain('LIFECYCLE_BADGE');
     expect(sheet).toContain('DISCONTINUED');
     expect(sheet).toMatch(/>\s*Status\s*<\/th>/);
-    expect(attendance).toContain('attendance-detail-csv');
-    expect(attendance).toContain("responseType: 'blob'");
+    expect(sheet).toContain(
+      "import DownloadDataMenu from '../DownloadDataMenu'"
+    );
+    expect(sheet).toContain('exportTable({');
+    expect(sheet).toContain("sheetName: 'Attendance'");
   });
   test('month selection, JOINED timeline, and dark lifecycle badges', () => {
     expect(attendance).toContain('monthRange(selectedMonth, today)');
@@ -192,7 +195,9 @@ describe('attendance grid contracts', () => {
       'No attendance records are available for this team.'
     );
     expect(attendance).toContain('sheetData?.available_months || []');
-    expect(attendance).toContain('availableMonths[availableMonths.length - 1]');
+    expect(attendance).toContain(
+      'sheetAvailableMonths[sheetAvailableMonths.length - 1]'
+    );
     expect(monthPicker).toContain(
       'Array.isArray(allowedMonths) ? new Set(allowedMonths) : null'
     );

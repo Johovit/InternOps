@@ -13,6 +13,7 @@ import {
   X,
 } from 'lucide-react';
 import api from '../../lib/axios';
+import CustomSelect from '../CustomSelect';
 import { Btn, Card, Spinner } from '../ui';
 import { createPortal } from 'react-dom';
 
@@ -77,6 +78,8 @@ const SUMMARY_LABELS = {
   peopleReceivingAttendance: 'People receiving attendance',
   attendanceCreated: 'Attendance records created',
   attendanceUnchanged: 'Attendance records unchanged',
+  attendanceKeptExisting: 'Attendance conflicts kept existing',
+  attendanceUpdatedFromWorkbook: 'Attendance updated from workbook',
   internCodesCorrected: 'Intern codes corrected',
   ratingSheets: 'Rating sheets',
   ratingRecords: 'Rating records',
@@ -161,6 +164,7 @@ export default function WorkbookImportModal({ open, onClose }) {
   const [emailFile, setEmailFile] = useState(null);
   const [preview, setPreview] = useState(null);
   const [resolutions, setResolutions] = useState({});
+  const [databaseResolutions, setDatabaseResolutions] = useState({});
   const [error, setError] = useState('');
   const [duplicateReview, setDuplicateReview] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -211,11 +215,23 @@ export default function WorkbookImportModal({ open, onClose }) {
       .catch(() => setManagers([]));
   }, [departmentId]);
 
-  const unresolvedCount = useMemo(() => {
+  const unresolvedWorkbookCount = useMemo(() => {
     if (!preview) return 0;
     return preview.conflicts.filter((conflict) => !resolutions[conflict.id])
       .length;
   }, [preview, resolutions]);
+  const databaseConflicts =
+    preview?.databaseComparison?.databaseConflicts || [];
+  const unresolvedDatabaseCount = databaseConflicts.filter(
+    (conflict) => !databaseResolutions[conflict.id]
+  ).length;
+  const keptExistingCount = databaseConflicts.filter(
+    (conflict) => databaseResolutions[conflict.id] === 'KEEP_EXISTING'
+  ).length;
+  const useWorkbookCount = databaseConflicts.filter(
+    (conflict) => databaseResolutions[conflict.id] === 'USE_WORKBOOK'
+  ).length;
+  const unresolvedCount = unresolvedWorkbookCount + unresolvedDatabaseCount;
 
   const filteredInterns = useMemo(() => {
     if (!preview) return [];
@@ -247,6 +263,7 @@ export default function WorkbookImportModal({ open, onClose }) {
     setEmailFile(null);
     setPreview(null);
     setResolutions({});
+    setDatabaseResolutions({});
     setSearch('');
     setVisibleRows(20);
     setError('');
@@ -261,6 +278,7 @@ export default function WorkbookImportModal({ open, onClose }) {
     setDuplicateReview([]);
     setPreview(null);
     setResolutions({});
+    setDatabaseResolutions({});
     setSearch('');
     setVisibleRows(20);
     try {
@@ -277,6 +295,7 @@ export default function WorkbookImportModal({ open, onClose }) {
         _suppressGlobalError: true,
       });
       setPreview(response.data);
+      setDatabaseResolutions({});
       setImportResult(null);
     } catch (requestError) {
       setError(
@@ -291,6 +310,19 @@ export default function WorkbookImportModal({ open, onClose }) {
 
   const chooseResolution = (conflictId, value) => {
     setResolutions((current) => ({ ...current, [conflictId]: value }));
+  };
+  const chooseDatabaseResolution = (conflictId, value) => {
+    setDatabaseResolutions((current) => ({
+      ...current,
+      [conflictId]: value,
+    }));
+  };
+  const resolveAllDatabaseConflicts = (value) => {
+    setDatabaseResolutions(
+      Object.fromEntries(
+        databaseConflicts.map((conflict) => [conflict.id, value])
+      )
+    );
   };
 
   const canImport = Boolean(
@@ -325,6 +357,7 @@ export default function WorkbookImportModal({ open, onClose }) {
       const form = new FormData();
       form.append('workbook', file);
       form.append('emailWorkbook', emailFile);
+      form.append('attendanceResolutions', JSON.stringify(databaseResolutions));
       const response = await api.post('/workbook-imports/execute', form, {
         params: {
           departmentId,
@@ -512,62 +545,86 @@ export default function WorkbookImportModal({ open, onClose }) {
                       </div>
                     )}
                   </div>
-                  <label className="inline-flex shrink-0 cursor-pointer items-center gap-2 whitespace-nowrap rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100">
-                    <Upload className="h-4 w-4" />
-                    {emailFile
-                      ? 'Replace email workbook'
-                      : 'Choose email workbook'}
-                    <input
-                      type="file"
-                      accept=".xlsx"
-                      className="sr-only"
-                      onChange={(event) => {
-                        setEmailFile(event.target.files?.[0] || null);
-                        setPreview(null);
-                        setError('');
-                      }}
-                    />
-                  </label>
+                  <div className="flex shrink-0 flex-wrap gap-2">
+                    {emailFile && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEmailFile(null);
+                          setPreview(null);
+                          setResolutions({});
+                          setDatabaseResolutions({});
+                          setError('');
+                        }}
+                        className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700 transition hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
+                      >
+                        Clear email workbook
+                      </button>
+                    )}
+                    <label className="inline-flex cursor-pointer items-center gap-2 whitespace-nowrap rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100">
+                      <Upload className="h-4 w-4" />
+                      {emailFile
+                        ? 'Replace email workbook'
+                        : 'Choose email workbook'}
+                      <input
+                        type="file"
+                        accept=".xlsx"
+                        className="sr-only"
+                        onChange={(event) => {
+                          setEmailFile(event.target.files?.[0] || null);
+                          setPreview(null);
+                          setError('');
+                        }}
+                      />
+                    </label>
+                  </div>
                 </div>
               </Card>
               <div className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-950/40 md:grid-cols-2">
                 <label className="text-sm font-bold text-slate-700 dark:text-slate-200">
                   Assign to department
-                  <select
+                  <CustomSelect
                     value={departmentId}
-                    onChange={(event) => {
-                      setDepartmentId(event.target.value);
+                    onChange={(value) => {
+                      setDepartmentId(value);
                       setManagerId('');
                       setPreview(null);
                     }}
-                    className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-white"
-                  >
-                    <option value="">Select department</option>
-                    {departments.map((department) => (
-                      <option key={department.id} value={department.id}>
-                        {department.name}
-                      </option>
-                    ))}
-                  </select>
+                    options={[
+                      { value: '', label: 'Select department' },
+                      ...departments.map((department) => ({
+                        value: department.id,
+                        label: department.name,
+                      })),
+                    ]}
+                    placeholder="Select department"
+                    className="mt-2 w-full"
+                    searchable
+                  />
                 </label>
                 <label className="text-sm font-bold text-slate-700 dark:text-slate-200">
                   Assign direct manager
-                  <select
+                  <CustomSelect
                     value={managerId}
-                    onChange={(event) => {
-                      setManagerId(event.target.value);
+                    onChange={(value) => {
+                      setManagerId(value);
                       setPreview(null);
                     }}
+                    options={[
+                      {
+                        value: '',
+                        label: 'Select Senior TL, TL, or Captain',
+                      },
+                      ...managers.map((manager) => ({
+                        value: manager.lead_id,
+                        label: `${manager.lead_name} (${manager.role})`,
+                      })),
+                    ]}
+                    placeholder="Select Senior TL, TL, or Captain"
                     disabled={!departmentId}
-                    className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-900 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-900 dark:text-white"
-                  >
-                    <option value="">Select Senior TL, TL, or Captain</option>
-                    {managers.map((manager) => (
-                      <option key={manager.lead_id} value={manager.lead_id}>
-                        {manager.lead_name} ({manager.role})
-                      </option>
-                    ))}
-                  </select>
+                    className="mt-2 w-full"
+                    searchable
+                  />
                 </label>
                 <p className="text-xs text-slate-500 dark:text-slate-400 md:col-span-2">
                   The selected direct manager applies only to newly created
@@ -956,29 +1013,130 @@ export default function WorkbookImportModal({ open, onClose }) {
                             <label className="mt-4 block text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                               Preview resolution
                             </label>
-                            <select
-                              className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-slate-900 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 dark:border-slate-600 dark:bg-slate-900 dark:text-white"
+                            <CustomSelect
                               value={resolutions[conflict.id] || ''}
-                              onChange={(event) =>
-                                chooseResolution(
-                                  conflict.id,
-                                  event.target.value
-                                )
+                              onChange={(value) =>
+                                chooseResolution(conflict.id, value)
                               }
-                            >
-                              <option value="">Select a resolution</option>
-                              {conflict.allowedResolutions.map((option) => (
-                                <option key={option.value} value={option.value}>
-                                  {option.label}
-                                </option>
-                              ))}
-                            </select>
+                              options={[
+                                { value: '', label: 'Select a resolution' },
+                                ...conflict.allowedResolutions,
+                              ]}
+                              placeholder="Select a resolution"
+                              className="mt-1 w-full"
+                            />
                           </div>
                         ))}
                       </div>
                     </Card>
                   )}
 
+                  {databaseConflicts.length > 0 && (
+                    <Card className="border-rose-300 dark:border-rose-800">
+                      <div className="flex flex-col gap-3 border-b border-rose-200 px-5 py-4 dark:border-rose-800 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <h3 className="font-extrabold text-slate-950 dark:text-white">
+                            Existing InternOps attendance conflicts
+                          </h3>
+                          <p className="text-sm text-slate-500 dark:text-slate-400">
+                            Choose whether to keep the saved record or use the
+                            uploaded workbook value.
+                          </p>
+                          <div className="mt-2 flex flex-wrap gap-2 text-xs font-bold">
+                            <span className="rounded-full bg-amber-100 px-2.5 py-1 text-amber-800 dark:bg-amber-950 dark:text-amber-200">
+                              Unresolved: {unresolvedDatabaseCount}
+                            </span>
+                            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                              Keep existing: {keptExistingCount}
+                            </span>
+                            <span className="rounded-full bg-indigo-100 px-2.5 py-1 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-200">
+                              Use workbook: {useWorkbookCount}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              resolveAllDatabaseConflicts('KEEP_EXISTING')
+                            }
+                            className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                          >
+                            Keep all existing
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              resolveAllDatabaseConflicts('USE_WORKBOOK')
+                            }
+                            className="rounded-xl bg-indigo-600 px-3 py-2 text-sm font-bold text-white hover:bg-indigo-700"
+                          >
+                            Use all workbook values
+                          </button>
+                        </div>
+                      </div>
+                      <div className="space-y-4 p-4 sm:p-5">
+                        {databaseConflicts.map((conflict) => (
+                          <div
+                            key={conflict.id}
+                            className="rounded-2xl border border-rose-200 bg-rose-50/70 p-4 dark:border-rose-800 dark:bg-rose-950/20"
+                          >
+                            <div className="flex flex-wrap items-center gap-2">
+                              <strong>{conflict.name}</strong>
+                              {conflict.code && (
+                                <span className="rounded-full bg-slate-900 px-2.5 py-1 text-xs font-bold text-white dark:bg-slate-100 dark:text-slate-900">
+                                  {conflict.code}
+                                </span>
+                              )}
+                              <span className="ml-auto text-sm font-bold">
+                                {formatDate(conflict.date)}
+                              </span>
+                            </div>
+                            <div className="mt-3 grid gap-3 md:grid-cols-2">
+                              <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
+                                <div className="text-xs font-bold uppercase text-slate-500">
+                                  InternOps
+                                </div>
+                                <div className="mt-2">
+                                  <AttendanceBadge value={conflict.existing} />
+                                </div>
+                                {conflict.existingRemarks && (
+                                  <p className="mt-2 text-sm">
+                                    {conflict.existingRemarks}
+                                  </p>
+                                )}
+                              </div>
+                              <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
+                                <div className="text-xs font-bold uppercase text-slate-500">
+                                  Workbook
+                                </div>
+                                <div className="mt-2">
+                                  <AttendanceBadge value={conflict.incoming} />
+                                </div>
+                                <p className="mt-2 text-sm text-slate-500">
+                                  {conflict.incomingSource}
+                                </p>
+                                {conflict.incomingRemarks && (
+                                  <p className="mt-1 text-sm">
+                                    {conflict.incomingRemarks}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                            <CustomSelect
+                              value={databaseResolutions[conflict.id] || ''}
+                              onChange={(value) =>
+                                chooseDatabaseResolution(conflict.id, value)
+                              }
+                              options={conflict.allowedResolutions}
+                              placeholder="Select how to resolve this conflict"
+                              className="mt-4 w-full"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </Card>
+                  )}
                   <Card className="overflow-hidden">
                     <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 dark:border-slate-700 sm:flex-row sm:items-center sm:justify-between">
                       <div>
@@ -1096,7 +1254,7 @@ export default function WorkbookImportModal({ open, onClose }) {
                   <div className="font-bold">
                     {unresolvedCount > 0
                       ? `${unresolvedCount} conflict${unresolvedCount === 1 ? '' : 's'} unresolved`
-                      : 'All preview attendance conflicts resolved'}
+                      : 'All attendance conflicts explicitly resolved'}
                   </div>
                   <div className="truncate text-xs text-slate-500 dark:text-slate-400">
                     Preview fingerprint:{' '}
