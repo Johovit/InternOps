@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertCircle, Eye, EyeOff, RefreshCw } from 'lucide-react';
 import useBodyScrollLock from '../hooks/useBodyScrollLock';
+import { getApiErrorMessage } from '../lib/apiError';
 // Shared, reusable UI building blocks for a consistent, polished, animated look.
 
 export function PageHeader({ title, subtitle, icon, actions }) {
@@ -81,16 +82,6 @@ export function Card({ children, className = '', hover = false, ...props }) {
     >
       {children}
     </div>
-  );
-}
-
-function getApiErrorMessage(error, fallback) {
-  return (
-    error?.response?.data?.error ||
-    error?.response?.data?.message ||
-    error?.message ||
-    fallback ||
-    'Something went wrong. Please try again.'
   );
 }
 

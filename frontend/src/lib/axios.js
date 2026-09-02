@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { toast } from 'sonner';
 import { captureException } from './sentry';
+import { getApiErrorInfo, getApiErrorMessage } from './apiError';
 
 export function getBaseUrl() {
   const raw = import.meta.env.VITE_API_URL;
@@ -35,34 +36,6 @@ const api = axios.create({
   withCredentials: true,
   timeout: 15000,
 });
-
-function getApiErrorMessage(responseData) {
-  if (!responseData) return null;
-  if (typeof responseData === 'string') return responseData;
-  if (typeof responseData.error === 'string' && responseData.error.trim()) {
-    return responseData.error.trim();
-  }
-  if (typeof responseData.message === 'string' && responseData.message.trim()) {
-    return responseData.message.trim();
-  }
-  if (typeof responseData.detail === 'string' && responseData.detail.trim()) {
-    return responseData.detail.trim();
-  }
-  if (
-    typeof responseData.description === 'string' &&
-    responseData.description.trim()
-  ) {
-    return responseData.description.trim();
-  }
-  if (Array.isArray(responseData.errors) && responseData.errors.length) {
-    const firstError = responseData.errors[0];
-    if (typeof firstError === 'string') return firstError;
-    if (typeof firstError?.message === 'string' && firstError.message.trim()) {
-      return firstError.message.trim();
-    }
-  }
-  return null;
-}
 
 function shouldShowGlobalToast(err) {
   const original = err.config || {};
@@ -110,11 +83,20 @@ function getAiChatErrorMessage(err) {
   }
 
   if (status === 429) {
-    const serverMessage = getApiErrorMessage(err.response.data);
+    const responseData = err.response.data;
+    const hasServerMessage = Boolean(
+      responseData &&
+      (responseData.error ||
+        responseData.message ||
+        responseData.detail ||
+        responseData.description ||
+        responseData.details?.length ||
+        responseData.errors?.length)
+    );
     return {
-      message:
-        serverMessage ||
-        "You've reached the AI assistant's usage limit. Please try again later.",
+      message: hasServerMessage
+        ? getApiErrorMessage(err)
+        : "You've reached the AI assistant's usage limit. Please try again later.",
       retryable: false,
     };
   }
@@ -127,7 +109,7 @@ function getAiChatErrorMessage(err) {
     };
   }
 
-  const serverMessage = getApiErrorMessage(err.response.data);
+  const serverMessage = getApiErrorMessage(err);
   return {
     message:
       serverMessage || 'Could not process that request. Please try rephrasing.',
@@ -139,26 +121,7 @@ function notifyGlobalApiError(err) {
   if (!shouldShowGlobalToast(err)) {
     return;
   }
-
-  if (!err.response) {
-    const networkMessage =
-      err.code === 'ECONNABORTED'
-        ? 'The request timed out. Please check your connection and try again.'
-        : 'Unable to connect to the server. Check your internet connection and try again.';
-
-    toast.error(networkMessage);
-    return;
-  }
-
-  const status = err.response.status;
-  const serverMessage = getApiErrorMessage(err.response.data);
-  const message =
-    status >= 500
-      ? 'Something went wrong on our side. Please try again later.'
-      : serverMessage ||
-        'Request failed. Please check your input and try again.';
-
-  toast.error(message);
+  toast.error(getApiErrorMessage(err));
 }
 
 // The backend's CSRF guard requires the X-CSRF-Token header on mutating
@@ -403,10 +366,14 @@ api.interceptors.response.use(
       }
     }
 
+    const errorInfo = getApiErrorInfo(err);
+    err.userMessage = errorInfo.message;
+    err.errorCode = errorInfo.code;
+    err.requestId = errorInfo.requestId;
     notifyGlobalApiError(err);
     return Promise.reject(err);
   }
 );
 
 export default api;
-export { clearCsrfToken, getAiChatErrorMessage };
+export { clearCsrfToken, getAiChatErrorMessage, getApiErrorMessage };
