@@ -2,27 +2,19 @@ const {
   sanitizationMiddleware: sanitize,
 } = require('../../middleware/sanitize');
 const fs = require('fs');
-const { toSchema } = require('../../utils/schemaHelper');
 const path = require('path');
 const crypto = require('crypto');
 const auth = require('../../middleware/auth');
 const repo = require('./repository');
 const config = require('../../config');
 
-const ALLOWED = [
-  'image/png',
-  'image/jpeg',
-  'image/jpg',
-  'image/webp',
-  'image/gif',
-];
+const ALLOWED = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
 
-const ALLOWED_EXTS = ['.png', '.jpg', '.jpeg', '.webp', '.gif'];
+const ALLOWED_EXTS = ['.png', '.jpg', '.jpeg', '.webp'];
 
 const MAGIC_BYTES = {
   'image/jpeg': [[0xff, 0xd8, 0xff]],
   'image/png': [[0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]],
-  'image/gif': [[0x47, 0x49, 0x46, 0x38]],
 };
 
 function detectMimeFromBuffer(buf) {
@@ -112,7 +104,32 @@ async function routes(fastify) {
       fs.writeFileSync(targetFilePath, buffer);
 
       const url = `/uploads/${fileName}`;
-      await repo.updateAvatarUrl(req.user.id, url);
+
+      try {
+        await repo.createImage({
+          userId: req.user.id,
+          filePath: url,
+          fileName,
+          mimeType: data.mimetype,
+          fileSize: buffer.length,
+        });
+
+        await repo.updateAvatarUrl(req.user.id, url);
+      } catch (err) {
+        // Remove the uploaded file if database persistence fails.
+        try {
+          await fs.promises.unlink(targetFilePath);
+        } catch (cleanupErr) {
+          if (cleanupErr.code !== 'ENOENT') {
+            req.log.error(
+              { err: cleanupErr, filePath: targetFilePath },
+              'Failed to clean up uploaded image after database error'
+            );
+          }
+        }
+
+        throw err;
+      }
 
       return { success: true, avatar_url: url };
     }
@@ -200,7 +217,7 @@ async function routes(fastify) {
 
       if (avatarUrl.startsWith('/uploads/')) {
         await repo.deleteFile(avatarUrl).catch((err) => {
-          fastify.log.warn(
+          req.log.warn(
             { err, userId: req.user.id },
             'Failed to delete avatar file'
           );
