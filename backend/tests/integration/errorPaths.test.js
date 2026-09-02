@@ -54,8 +54,15 @@ describe('API error-path integration tests', () => {
       payload: { email: 'admin@internops.com', password: 'Admin@123' },
     });
 
+    const body = JSON.parse(res.body);
     expect(res.statusCode).toBe(500);
-    expect(JSON.parse(res.body)).toEqual({ error: 'Internal Server Error' });
+    expect(body).toEqual({
+      error: 'Internal Server Error',
+      message: 'Internal Server Error',
+      code: 'INTERNAL_ERROR',
+      requestId: expect.any(String),
+    });
+    expect(body.requestId).not.toHaveLength(0);
     expect(res.body).not.toContain(dbError.message);
     expect(res.body).not.toContain('stack');
     query.mockRestore();
