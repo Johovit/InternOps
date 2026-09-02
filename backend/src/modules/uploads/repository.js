@@ -9,13 +9,16 @@ async function updateAvatarUrl(userId, avatarUrl) {
     userId,
   ]);
 }
-async function getAvatarUrl(userId) {
-  const res = await pool.query('SELECT avatar_url FROM users WHERE id = $1', [
-    userId,
-  ]);
 
-  return res.rows[0]?.avatar_url || null;
+async function getAvatarUrl(userId) {
+  const { rows } = await pool.query(
+    'SELECT avatar_url FROM users WHERE id = $1',
+    [userId]
+  );
+
+  return rows[0]?.avatar_url || null;
 }
+
 async function createImage(data) {
   const res = await pool.query(
     `INSERT INTO image_library (
@@ -78,8 +81,8 @@ async function deleteFile(dbSavedPath) {
   const projectRoot = path.resolve(__dirname, '..', '..', '..');
 
   const uploadsRoot = path.resolve(projectRoot, config.uploadDir);
-  const relativePath = dbSavedPath.replace(/^\/+/, '');
-  const absolutePath = path.resolve(projectRoot, relativePath);
+  const normalizedPath = dbSavedPath.replace(/^[/\\]+/, '');
+  const absolutePath = path.resolve(projectRoot, normalizedPath);
 
   const relative = path.relative(uploadsRoot, absolutePath);
 
