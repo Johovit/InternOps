@@ -317,7 +317,9 @@ function getKBResponse(text) {
   }
   if (t.includes('audit') || t.includes('log')) return KB.audit;
 
-  return null;
+  return `I can help with InternOps-related questions such as ratings, attendance, tasks, proof verification, reports, sessions, meetings, permissions, and audit logs.
+
+  Please ask me something related to the InternOps platform.`;
 }
 
 function parseBold(text) {
