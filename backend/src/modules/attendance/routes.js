@@ -9,6 +9,7 @@ const { checkHierarchyAccess } = require('../../utils/hierarchy');
 const repo = require('./repository');
 const { createAuditLog, extractRequestInfo } = require('../../utils/audit');
 const { dbTx } = require('../../utils/dbTx');
+const pLimit = require('p-limit');
 const {
   send: sendNotification,
   bulkSend,
@@ -135,7 +136,7 @@ async function routes(fastify) {
           remarks: z.string().max(500).optional(),
         });
         const bodySchema = z.object({
-          entries: z.array(entrySchema).min(1),
+          entries: z.array(entrySchema).min(1).max(200),
         });
         const parsed = bodySchema.safeParse(req.body);
         if (!parsed.success) {
@@ -192,21 +193,29 @@ async function routes(fastify) {
         }));
 
         const notifications = await bulkSend(notificationsData);
+        const limit = pLimit(5);
+        await Promise.all(
+          notifications.map((notification) =>
+            limit(async () => {
+              const unreadCount = await getUnreadCount(notification.user_id);
 
-        for (const notification of notifications) {
-          const unreadCount = await getUnreadCount(notification.user_id);
+              await notifyUser(notification.user_id, 'notification-received', {
+                notification,
+                unreadCount,
+              });
+            })
+          )
+        );
 
-          await notifyUser(notification.user_id, 'notification-received', {
-            notification,
-            unreadCount,
-          });
-        }
-
-        for (const attendance of results) {
-          await notifyUser(attendance.user_id, 'attendance-marked', {
-            attendance,
-          });
-        }
+        await Promise.all(
+          results.map((attendance) =>
+            limit(async () => {
+              await notifyUser(attendance.user_id, 'attendance-marked', {
+                attendance,
+              });
+            })
+          )
+        );
 
         return {
           success: true,
