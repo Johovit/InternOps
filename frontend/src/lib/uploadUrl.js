@@ -24,7 +24,7 @@ function getApiOrigin() {
 export function resolveUploadUrl(path) {
   if (!path) return null;
   if (/^(https?:|data:|blob:)/i.test(path)) return path; // already absolute
-  if (!path.startsWith('/')) return path; // unexpected format — don't touch
+  if (!path.startsWith('/uploads/')) return path; // keep frontend public assets like /admin-default-avatar.svg relative
 
   const origin = getApiOrigin();
   return origin ? `${origin}${path}` : path;
