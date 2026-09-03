@@ -198,10 +198,10 @@ function ManagerHome({ user }) {
             </div>
 
             <Link
-              to="/team"
+              to="/analytics"
               className="text-indigo-600 dark:text-indigo-400 text-sm font-bold hover:underline shrink-0"
             >
-              View team →
+              View analytics →
             </Link>
           </div>
 

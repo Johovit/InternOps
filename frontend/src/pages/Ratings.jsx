@@ -64,7 +64,8 @@ export default function Ratings({
   const [viewDepartmentId, setViewDepartmentId] = useState(requestedDeptId);
   const [viewAll, setViewAll] = useState(false);
   const today = new Date().toISOString().slice(0, 10);
-  const [selectedMonth, setSelectedMonth] = useState(today.slice(0, 7));
+  const currentMonth = today.slice(0, 7);
+  const [selectedMonth, setSelectedMonth] = useState(currentMonth);
   const [selectedYear, selectedMonthNumber] = selectedMonth
     .split('-')
     .map(Number);
@@ -126,6 +127,7 @@ export default function Ratings({
   const {
     data: sheetData,
     isLoading: sheetIsLoading,
+    isFetching: sheetIsFetching,
     error: sheetError,
     refetch: refetchSheet,
   } = useQuery({
@@ -138,6 +140,8 @@ export default function Ratings({
         .then((res) => res.data),
     enabled: viewAll && !!activeDeptId,
   });
+  const validSheetData = sheetData || null;
+  const ratingsSheetIsPending = viewAll && !!activeDeptId && sheetIsLoading;
 
   const {
     data: ratings,
@@ -218,7 +222,7 @@ export default function Ratings({
   const activeDepartment = departments.find((d) => d.id === activeDeptId);
 
   return (
-    <div className="animate-fade-in-up">
+    <div>
       {/* Admin Department Navigation Context Banner */}
       {isAdmin && activeDeptId && !isProjectView && (
         <div className="mb-6 p-4 rounded-3xl bg-gradient-to-r from-slate-900 to-indigo-950 text-white shadow-lg flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border border-indigo-500/20 animate-fade-in">
@@ -432,10 +436,12 @@ export default function Ratings({
             <div className="mb-6">
               <DepartmentRatingsSheet
                 departmentName={activeDepartment?.name}
-                data={sheetData}
+                data={validSheetData}
                 selectedMonth={selectedMonth}
+                currentMonth={currentMonth}
                 onMonthChange={setSelectedMonth}
-                isLoading={sheetIsLoading}
+                isLoading={ratingsSheetIsPending || sheetIsLoading}
+                isRefreshing={sheetIsFetching && !!validSheetData}
                 error={sheetError}
                 onRetry={refetchSheet}
               />
@@ -648,10 +654,12 @@ export default function Ratings({
             <div className="mb-6">
               <DepartmentRatingsSheet
                 departmentName={activeDepartment?.name}
-                data={sheetData}
+                data={validSheetData}
                 selectedMonth={selectedMonth}
+                currentMonth={currentMonth}
                 onMonthChange={setSelectedMonth}
-                isLoading={sheetIsLoading}
+                isLoading={ratingsSheetIsPending || sheetIsLoading}
+                isRefreshing={sheetIsFetching && !!validSheetData}
                 error={sheetError}
                 onRetry={refetchSheet}
               />

@@ -123,7 +123,8 @@ async function getUserById(id) {
     `SELECT users.id, users.email, users.role, users.full_name, users.suspended,
             users.avatar_url, users.created_at, users.department_id, users.manager_id,
             users.phone, users.college, users.course, users.year_of_study, users.position,
-            users.joining_date, users.internship_status, users.location, users.notes,
+            users.intern_code, users.joining_date, users.internship_status, users.location,
+            users.notes,
             departments.name AS department_name
      FROM users
      LEFT JOIN departments ON departments.id = users.department_id

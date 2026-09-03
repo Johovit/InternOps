@@ -60,6 +60,13 @@ const nav = [
     allowedRoles: MANAGER_ROLES,
   },
   {
+    path: '/analytics',
+    label: 'Analytics',
+    icon: BarChart2,
+    allowedRoles: ADMIN_AND_SENIOR_TL_ROLES,
+    featureFlag: 'ADVANCED_ANALYTICS',
+  },
+  {
     path: '/hr',
     label: 'HR',
     icon: BriefcaseBusiness,
@@ -104,13 +111,6 @@ const nav = [
     label: 'Report Templates',
     icon: FileText,
     allowedRoles: ADMIN_AND_SENIOR_TL_ROLES,
-  },
-  {
-    path: '/analytics',
-    label: 'Analytics',
-    icon: BarChart2,
-    allowedRoles: ADMIN_AND_SENIOR_TL_ROLES,
-    featureFlag: 'ADVANCED_ANALYTICS',
   },
   {
     path: '/exports',

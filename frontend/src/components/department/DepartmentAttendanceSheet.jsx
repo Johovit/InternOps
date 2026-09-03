@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useLayoutEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Expand, Search, X } from 'lucide-react';
+import DownloadDataMenu from '../DownloadDataMenu';
+import { exportTable, makeExportFileName } from '../../utils/tableExport';
 import CustomMonthPicker from '../CustomMonthPicker';
 
 const ROLE_ORDER = { ADMIN: 0, SENIOR_TL: 1, TL: 2, CAPTAIN: 3, INTERN: 4 };
@@ -336,12 +338,90 @@ export default function DepartmentAttendanceSheet({
   selectedMonth,
   onMonthChange,
   isLoading,
+  isRefreshing = false,
   error,
   onRetry,
-  onDownload,
 }) {
   const [search, setSearch] = useState('');
   const [fullScreen, setFullScreen] = useState(false);
+  const monthDates = useMemo(() => {
+    const [year, month] = selectedMonth.split('-').map(Number);
+    if (!year || !month) return [];
+    const days = new Date(year, month, 0).getDate();
+    return Array.from({ length: days }, (_, index) => {
+      const day = String(index + 1).padStart(2, '0');
+      return `${selectedMonth}-${day}`;
+    }).filter((date) => new Date(`${date}T00:00:00`).getDay() !== 0);
+  }, [selectedMonth]);
+  const exportAttendance = (format) => {
+    const visibleDates = (data?.dates || []).filter(
+      (date) => new Date(`${date}T00:00:00`).getDay() !== 0
+    );
+    const term = search.trim().toLowerCase();
+    const members = (data?.members || []).filter(
+      (member) =>
+        !term ||
+        `${member.full_name || ''} ${member.email || ''} ${member.intern_code || ''} ${member.role || ''}`
+          .toLowerCase()
+          .includes(term)
+    );
+    const records = new Map(
+      (data?.records || []).map((record) => [
+        `${record.user_id}|${String(record.date).slice(0, 10)}`,
+        record.status,
+      ])
+    );
+    const columns = [
+      { key: 'member', label: 'Member', width: 26 },
+      { key: 'email', label: 'Email', width: 30 },
+      { key: 'internCode', label: 'Intern Code', width: 16 },
+      { key: 'role', label: 'Role', width: 16 },
+      { key: 'status', label: 'Internship Status', width: 20 },
+      ...visibleDates.map((date) => ({
+        key: date,
+        label: formatDate(date),
+        width: 14,
+      })),
+    ];
+    const rows = members.map((member) => {
+      const row = {
+        member: member.full_name || 'Unnamed member',
+        email: member.email || '',
+        internCode: member.intern_code || '',
+        role: String(member.role || '').replaceAll('_', ' '),
+        status: String(member.internship_status || 'ACTIVE').replaceAll(
+          '_',
+          ' '
+        ),
+      };
+      for (const date of visibleDates) {
+        const state = lifecycleCellState(member, date);
+        row[date] = [
+          'JOINED',
+          'COMPLETED',
+          'TERMINATED',
+          'DISCONTINUED',
+        ].includes(state)
+          ? state
+          : records.get(`${member.id}|${date}`) || 'No record';
+      }
+      return row;
+    });
+    const base = makeExportFileName(
+      'attendance',
+      departmentName,
+      selectedMonth,
+      'tmp'
+    ).replace(/\.tmp$/, '');
+    exportTable({
+      format,
+      title: `Attendance - ${departmentName || 'Department'} - ${selectedMonth}`,
+      fileBase: base,
+      sheetName: 'Attendance',
+      columns,
+      rows,
+    });
+  };
   const displayedInternCount = useMemo(() => {
     const query = search.trim().toLowerCase();
     return new Set(
@@ -357,7 +437,7 @@ export default function DepartmentAttendanceSheet({
     ).size;
   }, [data?.members, search]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!fullScreen) return undefined;
     document.body.classList.add('modal-open');
     const onKeyDown = (event) => event.key === 'Escape' && setFullScreen(false);
@@ -387,7 +467,10 @@ export default function DepartmentAttendanceSheet({
                 {departmentName || 'Department'}
               </h3>
               <span className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-extrabold text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
-                Total Interns: {displayedInternCount}
+                Total Interns:{' '}
+                <span className="inline-block min-w-5 text-center">
+                  {isLoading ? '--' : displayedInternCount}
+                </span>
               </span>
             </div>
           </div>
@@ -411,13 +494,10 @@ export default function DepartmentAttendanceSheet({
                 className="w-full rounded-xl border border-slate-300 bg-white py-2.5 pl-10 pr-3 text-sm text-slate-900 outline-none focus:border-indigo-500 dark:border-slate-600 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-500"
               />
             </label>
-            <button
-              type="button"
-              onClick={onDownload}
-              className="inline-flex w-auto whitespace-nowrap self-end items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-extrabold text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
-            >
-              Download CSV
-            </button>
+            <DownloadDataMenu
+              onSelect={exportAttendance}
+              disabled={isLoading || isRefreshing || !data?.members?.length}
+            />
             {!expanded ? (
               <button
                 type="button"
@@ -444,10 +524,95 @@ export default function DepartmentAttendanceSheet({
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto bg-white dark:bg-slate-900">
+      <div className="internops-sheet-scroll relative min-h-[24rem] flex-1 overflow-auto bg-white dark:bg-slate-900">
+        {isRefreshing && !isLoading && (
+          <div className="pointer-events-none sticky left-0 top-0 z-[80] flex h-1 w-full overflow-hidden bg-indigo-100 dark:bg-slate-800">
+            <div className="h-full w-1/3 animate-pulse rounded-full bg-indigo-500" />
+          </div>
+        )}
+
         {isLoading ? (
-          <div className="p-12 text-center text-slate-500 dark:text-slate-400">
-            Loading attendance sheet...
+          <div
+            className="min-h-[24rem]"
+            role="status"
+            aria-label="Loading attendance sheet"
+          >
+            <table className="isolate w-max min-w-full table-fixed border-separate border-spacing-0 text-sm">
+              <colgroup>
+                <col className="w-72 min-w-72" />
+                <col className="w-36 min-w-36" />
+                <col className="w-40 min-w-40" />
+                {monthDates.map((date) => (
+                  <col key={date} className="w-28 min-w-28" />
+                ))}
+              </colgroup>
+              <thead>
+                <tr>
+                  <th
+                    className={`sticky left-0 top-0 z-[60] ${MEMBER_COLUMN} border-b border-r border-slate-200 bg-slate-50 px-6 py-4 text-left font-extrabold text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200`}
+                  >
+                    Member
+                  </th>
+                  <th
+                    className={`sticky left-72 top-0 z-[60] ${ROLE_COLUMN} border-b border-r border-slate-200 bg-slate-50 px-5 py-4 text-center font-extrabold text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200`}
+                  >
+                    Role
+                  </th>
+                  <th
+                    className={`sticky left-[27rem] top-0 z-[60] ${STATUS_COLUMN} border-b border-r border-slate-200 bg-slate-50 px-5 py-4 text-center font-extrabold text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200`}
+                  >
+                    Status
+                  </th>
+                  {monthDates.map((date) => (
+                    <th
+                      key={date}
+                      className="sticky top-0 z-30 min-w-28 border-b border-r border-slate-200 bg-slate-50 px-4 py-4 text-center font-extrabold text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+                    >
+                      {formatDate(date)}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {Array.from({ length: 8 }, (_, rowIndex) => {
+                  const rowSurface =
+                    rowIndex % 2 === 0
+                      ? 'bg-white dark:bg-slate-900'
+                      : 'bg-slate-50/80 dark:bg-slate-800/50';
+                  return (
+                    <tr key={`attendance-loading-row-${rowIndex}`}>
+                      <td
+                        className={`sticky left-0 z-50 ${rowSurface} ${MEMBER_COLUMN} border-b border-r border-slate-200 px-6 py-4 dark:border-slate-700`}
+                      >
+                        <div className="space-y-2">
+                          <div className="h-3.5 w-3/5 animate-pulse rounded-full bg-slate-200 motion-reduce:animate-none dark:bg-slate-700" />
+                          <div className="h-3 w-4/5 animate-pulse rounded-full bg-slate-200 motion-reduce:animate-none dark:bg-slate-700" />
+                          <div className="h-2.5 w-2/3 animate-pulse rounded-full bg-slate-200 motion-reduce:animate-none dark:bg-slate-700" />
+                        </div>
+                      </td>
+                      <td
+                        className={`sticky left-72 z-50 ${rowSurface} ${ROLE_COLUMN} border-b border-r border-slate-200 px-5 py-4 text-center dark:border-slate-700`}
+                      >
+                        <div className="mx-auto h-7 w-[5.25rem] animate-pulse rounded-full bg-slate-200 motion-reduce:animate-none dark:bg-slate-700" />
+                      </td>
+                      <td
+                        className={`sticky left-[27rem] z-50 ${rowSurface} ${STATUS_COLUMN} border-b border-r border-slate-200 px-5 py-4 text-center dark:border-slate-700`}
+                      >
+                        <div className="mx-auto h-7 w-[5.75rem] animate-pulse rounded-full bg-slate-200 motion-reduce:animate-none dark:bg-slate-700" />
+                      </td>
+                      {monthDates.map((date) => (
+                        <td
+                          key={date}
+                          className={`min-w-28 ${rowSurface} border-b border-r border-slate-200 px-4 py-3 text-center dark:border-slate-700`}
+                        >
+                          <div className="mx-auto h-9 min-w-9 max-w-9 animate-pulse rounded-xl bg-slate-200 motion-reduce:animate-none dark:bg-slate-700" />
+                        </td>
+                      ))}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         ) : error ? (
           <div className="p-8 text-center text-red-600 dark:text-red-300">
@@ -469,7 +634,7 @@ export default function DepartmentAttendanceSheet({
         ) : data?.members?.length ? (
           <AttendanceGrid
             members={data.members}
-            dates={data.dates || []}
+            dates={monthDates}
             records={data.records || []}
             search={search}
           />
@@ -482,16 +647,14 @@ export default function DepartmentAttendanceSheet({
     </section>
   );
 
-  return (
-    <>
-      {content(false)}
-      {fullScreen &&
-        createPortal(
-          <div className="internops-modal-backdrop fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4">
-            {content(true)}
-          </div>,
-          document.body
-        )}
-    </>
-  );
+  if (fullScreen) {
+    return createPortal(
+      <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4">
+        {content(true)}
+      </div>,
+      document.body
+    );
+  }
+
+  return content(false);
 }

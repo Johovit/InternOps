@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import Ratings from '../pages/Ratings';
 import DepartmentRatingsSheet from '../components/department/DepartmentRatingsSheet';
+import { getFourWeekRatingPeriods } from '../utils/ratingPeriods';
 import api from '../lib/axios';
 import useAuthStore from '../store/auth';
 
@@ -36,6 +37,13 @@ const mockTeamMembers = [
   },
 ];
 
+const ratingPeriods = getFourWeekRatingPeriods('2026-08');
+const rating = (periodIndex, score, remarks) => ({
+  score,
+  remarks,
+  period_start: ratingPeriods[periodIndex].start,
+  period_end: ratingPeriods[periodIndex].end,
+});
 const mockSheetData = {
   available_months: ['2026-08'],
   members: [
@@ -48,18 +56,8 @@ const mockSheetData = {
       internship_status: 'ACTIVE',
       suspended: false,
       weekly_ratings: [
-        {
-          score: 8.4,
-          remarks: 'Great work',
-          period_start: '2026-08-03',
-          period_end: '2026-08-08',
-        },
-        {
-          score: 9,
-          remarks: 'Excellent follow-through',
-          period_start: '2026-08-10',
-          period_end: '2026-08-15',
-        },
+        rating(0, 8.4, 'Great work'),
+        rating(1, 9, 'Excellent follow-through'),
       ],
     },
     {
@@ -70,14 +68,7 @@ const mockSheetData = {
       role: 'INTERN',
       internship_status: 'ACTIVE',
       suspended: false,
-      weekly_ratings: [
-        {
-          score: 3.2,
-          remarks: 'Needs improvement',
-          period_start: '2026-08-03',
-          period_end: '2026-08-08',
-        },
-      ],
+      weekly_ratings: [rating(0, 3.2, 'Needs improvement')],
     },
     {
       id: 'user-3',
@@ -87,18 +78,10 @@ const mockSheetData = {
       role: 'INTERN',
       internship_status: 'COMPLETED',
       suspended: false,
-      weekly_ratings: [
-        {
-          score: 5,
-          remarks: 'Good progress',
-          period_start: '2026-08-10',
-          period_end: '2026-08-15',
-        },
-      ],
+      weekly_ratings: [rating(1, 5, 'Good progress')],
     },
   ],
 };
-
 const renderSheet = (overrides = {}) =>
   render(
     <DepartmentRatingsSheet
@@ -168,15 +151,13 @@ describe('Department Ratings Sheet & Filtering', () => {
 
   it('uses the current month-selection contract', () => {
     const onMonthChange = vi.fn();
-
-    renderSheet({
-      selectedMonth: '2026-07',
-      onMonthChange,
-    });
-
-    expect(onMonthChange).toHaveBeenCalledWith('2026-08');
+    renderSheet({ onMonthChange });
+    fireEvent.click(screen.getByRole('button', { name: 'Month' }));
+    expect(
+      screen.getByRole('dialog', { name: 'Choose month' })
+    ).toBeInTheDocument();
+    expect(onMonthChange).not.toHaveBeenCalled();
   });
-
   it('filters members by search query', () => {
     renderSheet();
 
@@ -187,7 +168,9 @@ describe('Department Ratings Sheet & Filtering', () => {
     expect(screen.getByText('Alice Cooper')).toBeInTheDocument();
     expect(screen.queryByText('Bob Marley')).not.toBeInTheDocument();
     expect(screen.queryByText('Charlie Chaplin')).not.toBeInTheDocument();
-    expect(screen.getByText('Total Interns: 1')).toBeInTheDocument();
+    expect(screen.getByText(/Total Interns:/)).toHaveTextContent(
+      'Total Interns: 1'
+    );
   });
 
   it('shows View All after an Admin selects a department', async () => {

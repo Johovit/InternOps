@@ -149,6 +149,7 @@ function compareWithDatabase(preview, existingInterns, existingAttendance) {
     existingAttendance.map((row) => [`${row.user_id}|${row.date}`, row])
   );
   const internResults = [];
+  const databaseConflicts = [];
   const counts = {
     databaseMatched: 0,
     databaseNewCandidates: 0,
@@ -214,6 +215,32 @@ function compareWithDatabase(preview, existingInterns, existingAttendance) {
       } else {
         attendance.conflicts += 1;
         counts.databaseAttendanceConflicts += 1;
+        databaseConflicts.push({
+          id: `DATABASE_ATTENDANCE|${match.user.id}|${item.date}`,
+          type: 'DATABASE_ATTENDANCE_CONFLICT',
+          userId: match.user.id,
+          internKey: intern.key,
+          name: intern.name,
+          code: intern.code || null,
+          date: item.date,
+          existing: existing.status,
+          existingRemarks: existing.remarks || null,
+          incoming: item.status,
+          incomingRemarks: item.remarks || null,
+          incomingSource: item.sourceSheet
+            ? `${item.sourceSheet} row ${item.sourceRow}`
+            : 'Uploaded workbook',
+          allowedResolutions: [
+            {
+              value: 'KEEP_EXISTING',
+              label: 'Keep existing InternOps value',
+            },
+            {
+              value: 'USE_WORKBOOK',
+              label: 'Use workbook value',
+            },
+          ],
+        });
       }
     }
     internResults.push({
@@ -232,6 +259,7 @@ function compareWithDatabase(preview, existingInterns, existingAttendance) {
     writesAllowed: false,
     counts,
     interns: internResults,
+    databaseConflicts,
   };
 }
 

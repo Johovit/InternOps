@@ -1,7 +1,10 @@
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useLayoutEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Expand, Search, Star, X } from 'lucide-react';
+import DownloadDataMenu from '../DownloadDataMenu';
+import { exportTable, makeExportFileName } from '../../utils/tableExport';
 import CustomMonthPicker from '../CustomMonthPicker';
+import { getFourWeekRatingPeriods } from '../../utils/ratingPeriods';
 
 const ROLE_ORDER = { ADMIN: 0, SENIOR_TL: 1, TL: 2, CAPTAIN: 3, INTERN: 4 };
 const MEMBER_COLUMN_WIDTH = 'w-72 min-w-72 max-w-72';
@@ -49,7 +52,7 @@ function periodKey(rating) {
 function ScoreBadge({ value }) {
   if (value == null) {
     return (
-      <span className="font-bold text-slate-400 dark:text-slate-500">—</span>
+      <span className="font-bold text-slate-400 dark:text-slate-500">-</span>
     );
   }
   const score = Number(value);
@@ -68,7 +71,7 @@ function ScoreBadge({ value }) {
   );
 }
 
-function RatingsGrid({ members, search, fullScreen }) {
+function RatingsGrid({ members, search, fullScreen, selectedMonth }) {
   const filteredMembers = useMemo(() => {
     const term = search.trim().toLowerCase();
     return [...members]
@@ -91,19 +94,14 @@ function RatingsGrid({ members, search, fullScreen }) {
       });
   }, [members, search]);
 
-  const periods = useMemo(() => {
-    const byKey = new Map();
-    for (const member of filteredMembers) {
-      for (const rating of member.weekly_ratings || []) {
-        const key = periodKey(rating);
-        if (!key) continue;
-        const [start, end] = key.split('|');
-        byKey.set(key, { key, start, end });
-      }
-    }
-    return [...byKey.values()].sort((a, b) => a.start.localeCompare(b.start));
-  }, [filteredMembers]);
-
+  const periods = useMemo(
+    () =>
+      getFourWeekRatingPeriods(selectedMonth).map((period) => ({
+        ...period,
+        key: `${period.start}|${period.end}`,
+      })),
+    [selectedMonth]
+  );
   if (filteredMembers.length === 0) {
     return (
       <div className="p-10 text-center text-sm font-semibold text-slate-500 dark:text-slate-400">
@@ -116,8 +114,8 @@ function RatingsGrid({ members, search, fullScreen }) {
     <div
       className={
         fullScreen
-          ? 'min-h-0 flex-1 overflow-auto bg-white dark:bg-slate-900'
-          : 'max-h-[62vh] overflow-auto'
+          ? 'internops-sheet-scroll min-h-0 flex-1 overflow-scroll bg-white dark:bg-slate-900'
+          : 'internops-sheet-scroll max-h-[62vh] overflow-auto'
       }
     >
       <table className="min-w-max w-full border-separate border-spacing-0 text-sm">
@@ -202,7 +200,7 @@ function RatingsGrid({ members, search, fullScreen }) {
                     {member.email}
                   </div>
                   <div className="mt-1 text-xs font-bold text-indigo-600 dark:text-indigo-300">
-                    Intern Code: {member.intern_code || '—'}
+                    Intern Code: {member.intern_code || '-'}
                   </div>
                 </td>
                 <td
@@ -239,7 +237,7 @@ function RatingsGrid({ members, search, fullScreen }) {
                           className="line-clamp-3"
                           title={rating?.remarks || ''}
                         >
-                          {rating?.remarks || '—'}
+                          {rating?.remarks || ''}
                         </span>
                       </td>
                     </Fragment>
@@ -258,13 +256,81 @@ export default function DepartmentRatingsSheet({
   departmentName,
   data,
   selectedMonth,
+  currentMonth,
   onMonthChange,
   isLoading,
+  isRefreshing = false,
   error,
   onRetry,
 }) {
   const [search, setSearch] = useState('');
   const [fullScreen, setFullScreen] = useState(false);
+  const exportRatings = (format) => {
+    const term = search.trim().toLowerCase();
+    const members = (data?.members || []).filter(
+      (member) =>
+        !term ||
+        `${member.full_name || ''} ${member.email || ''} ${member.intern_code || ''} ${member.role || ''}`
+          .toLowerCase()
+          .includes(term)
+    );
+    const periods = getFourWeekRatingPeriods(selectedMonth).map((period) => ({
+      ...period,
+      key: `${period.start}|${period.end}`,
+    }));
+    const columns = [
+      { key: 'member', label: 'Member', width: 26 },
+      { key: 'email', label: 'Email', width: 30 },
+      { key: 'internCode', label: 'Intern Code', width: 16 },
+      { key: 'role', label: 'Role', width: 16 },
+      { key: 'status', label: 'Status', width: 18 },
+      ...periods.flatMap((p, i) => [
+        {
+          key: `rating${i}`,
+          label: `Week ${i + 1} Rating (${formatPeriodDate(p.start)} to ${formatPeriodDate(p.end)})`,
+          width: 22,
+        },
+        { key: `reason${i}`, label: `Week ${i + 1} Reason`, width: 42 },
+      ]),
+    ];
+    const rows = members.map((member) => {
+      const byPeriod = new Map(
+        (member.weekly_ratings || []).map((rating) => [
+          periodKey(rating),
+          rating,
+        ])
+      );
+      const row = {
+        member: member.full_name || 'Unnamed member',
+        email: member.email || '',
+        internCode: member.intern_code || '',
+        role: String(member.role || '').replaceAll('_', ' '),
+        status: member.suspended
+          ? 'IN-ACTIVE'
+          : String(member.internship_status || 'ACTIVE').replaceAll('_', ' '),
+      };
+      periods.forEach((p, i) => {
+        const rating = byPeriod.get(p.key);
+        row[`rating${i}`] = rating?.score ?? '';
+        row[`reason${i}`] = rating?.remarks || '';
+      });
+      return row;
+    });
+    const base = makeExportFileName(
+      'ratings',
+      departmentName,
+      selectedMonth,
+      'tmp'
+    ).replace(/\.tmp$/, '');
+    exportTable({
+      format,
+      title: `Ratings - ${departmentName || 'Department'} - ${selectedMonth}`,
+      fileBase: base,
+      sheetName: 'Ratings',
+      columns,
+      rows,
+    });
+  };
   const displayedInternCount = useMemo(() => {
     const query = search.trim().toLowerCase();
     return new Set(
@@ -279,18 +345,21 @@ export default function DepartmentRatingsSheet({
         .map((member) => member.id)
     ).size;
   }, [data?.members, search]);
-  const availableMonths = data?.available_months || [];
+  const availableMonths = useMemo(
+    () =>
+      [
+        ...new Set([
+          currentMonth,
+          selectedMonth,
+          ...(data?.available_months || []),
+        ]),
+      ]
+        .filter(Boolean)
+        .sort((a, b) => b.localeCompare(a)),
+    [currentMonth, data?.available_months, selectedMonth]
+  );
 
-  useEffect(() => {
-    if (
-      availableMonths.length > 0 &&
-      !availableMonths.includes(selectedMonth)
-    ) {
-      onMonthChange(availableMonths[0]);
-    }
-  }, [availableMonths, onMonthChange, selectedMonth]);
-
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!fullScreen) return undefined;
     document.body.classList.add('modal-open');
     const onKeyDown = (event) => {
@@ -319,7 +388,10 @@ export default function DepartmentRatingsSheet({
               {departmentName || 'Department'}
             </h3>
             <span className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-extrabold text-amber-700 dark:border-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
-              Total Interns: {displayedInternCount}
+              Total Interns:{' '}
+              <span className="inline-block min-w-5 text-center">
+                {isLoading ? '--' : displayedInternCount}
+              </span>
             </span>
           </div>
           <p className="mt-1 flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
@@ -349,6 +421,10 @@ export default function DepartmentRatingsSheet({
               className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-3 text-sm text-slate-800 outline-none focus:border-amber-400 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
             />
           </div>
+          <DownloadDataMenu
+            onSelect={exportRatings}
+            disabled={isLoading || isRefreshing || !data?.members?.length}
+          />
           {!isFullScreen ? (
             <button
               type="button"
@@ -371,53 +447,181 @@ export default function DepartmentRatingsSheet({
         </div>
       </div>
 
-      {isLoading ? (
-        <div className="flex justify-center p-12">
-          <div className="h-9 w-9 animate-spin rounded-full border-b-2 border-amber-500" />
-        </div>
-      ) : error ? (
-        <div className="p-10 text-center">
-          <p className="font-bold text-red-600 dark:text-red-300">
-            {error.response?.data?.error || 'Failed to load department ratings'}
-          </p>
-          <button
-            type="button"
-            onClick={onRetry}
-            className="mt-4 rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white"
+      <div
+        className={`relative min-h-[24rem] ${
+          isFullScreen ? 'flex min-h-0 flex-1 flex-col overflow-hidden' : ''
+        }`}
+      >
+        {isRefreshing && !isLoading && (
+          <div className="pointer-events-none absolute inset-x-0 top-0 z-[80] flex h-1 overflow-hidden bg-amber-100 dark:bg-slate-800">
+            <div className="h-full w-1/3 animate-pulse rounded-full bg-amber-500" />
+          </div>
+        )}
+
+        {isLoading ? (
+          <div
+            className={`internops-sheet-scroll overflow-auto ${
+              isFullScreen ? 'min-h-0 flex-1' : 'min-h-[24rem]'
+            }`}
+            role="status"
+            aria-label="Loading ratings sheet"
           >
-            Retry
-          </button>
-        </div>
-      ) : availableMonths.length === 0 ? (
-        <div className="p-12 text-center text-sm font-semibold text-slate-500 dark:text-slate-400">
-          No rating months are available for this department.
-        </div>
-      ) : data?.members?.length ? (
-        <RatingsGrid
-          members={data.members}
-          search={search}
-          fullScreen={isFullScreen}
-        />
-      ) : (
-        <div className="p-12 text-center text-sm font-semibold text-slate-500 dark:text-slate-400">
-          No members are available in this department view.
-        </div>
-      )}
+            <table className="min-w-max w-full border-separate border-spacing-0 text-sm">
+              <colgroup>
+                <col className="w-72 min-w-72" />
+                <col className="w-40 min-w-40" />
+                <col className="w-40 min-w-40" />
+                {Array.from({ length: 4 }, (_, weekIndex) => (
+                  <Fragment key={`ratings-loading-cols-${weekIndex}`}>
+                    <col className="w-36 min-w-36" />
+                    <col className="w-72 min-w-72" />
+                  </Fragment>
+                ))}
+              </colgroup>
+
+              <thead className="bg-slate-50 dark:bg-slate-950">
+                <tr>
+                  <th
+                    rowSpan={2}
+                    className="h-[6.75rem] border-b border-r border-slate-300 px-5 text-left dark:border-slate-600"
+                  >
+                    <div className="h-3 w-20 rounded-full bg-slate-200 animate-pulse motion-reduce:animate-none dark:bg-slate-700" />
+                  </th>
+
+                  <th
+                    rowSpan={2}
+                    className="h-[6.75rem] border-b border-r border-slate-300 px-4 dark:border-slate-600"
+                  >
+                    <div className="mx-auto h-3 w-14 rounded-full bg-slate-200 animate-pulse motion-reduce:animate-none dark:bg-slate-700" />
+                  </th>
+
+                  <th
+                    rowSpan={2}
+                    className="h-[6.75rem] border-b border-r border-slate-300 px-4 dark:border-slate-600"
+                  >
+                    <div className="mx-auto h-3 w-16 rounded-full bg-slate-200 animate-pulse motion-reduce:animate-none dark:bg-slate-700" />
+                  </th>
+
+                  {Array.from({ length: 4 }, (_, weekIndex) => (
+                    <th
+                      key={`ratings-loading-week-${weekIndex}`}
+                      colSpan={2}
+                      className="h-[3.4rem] border-b border-r border-slate-300 px-4 dark:border-slate-600"
+                    >
+                      <div className="mx-auto h-3 w-16 rounded-full bg-slate-200 animate-pulse motion-reduce:animate-none dark:bg-slate-700" />
+                      <div className="mx-auto mt-2 h-2.5 w-24 rounded-full bg-slate-200 animate-pulse motion-reduce:animate-none dark:bg-slate-700" />
+                    </th>
+                  ))}
+                </tr>
+
+                <tr>
+                  {Array.from({ length: 4 }, (_, weekIndex) => (
+                    <Fragment key={`ratings-loading-subhead-${weekIndex}`}>
+                      <th className="h-[3.35rem] border-b border-r border-slate-300 px-4 dark:border-slate-600">
+                        <div className="mx-auto h-3 w-14 rounded-full bg-slate-200 animate-pulse motion-reduce:animate-none dark:bg-slate-700" />
+                      </th>
+                      <th className="h-[3.35rem] border-b border-r border-slate-300 px-4 dark:border-slate-600">
+                        <div className="h-3 w-16 rounded-full bg-slate-200 animate-pulse motion-reduce:animate-none dark:bg-slate-700" />
+                      </th>
+                    </Fragment>
+                  ))}
+                </tr>
+              </thead>
+
+              <tbody>
+                {Array.from({ length: 8 }, (_, rowIndex) => {
+                  const rowBackground =
+                    rowIndex % 2 === 0
+                      ? 'bg-white dark:bg-slate-900'
+                      : 'bg-slate-50 dark:bg-slate-800';
+
+                  return (
+                    <tr
+                      key={`ratings-loading-row-${rowIndex}`}
+                      className={rowBackground}
+                    >
+                      <td className="h-[6.45rem] border-b border-r border-slate-200 px-5 dark:border-slate-600">
+                        <div className="space-y-2">
+                          <div className="h-3 w-3/5 rounded-full bg-slate-200 animate-pulse motion-reduce:animate-none dark:bg-slate-700" />
+                          <div className="h-2.5 w-4/5 rounded-full bg-slate-200 animate-pulse motion-reduce:animate-none dark:bg-slate-700" />
+                          <div className="h-2.5 w-2/3 rounded-full bg-slate-200 animate-pulse motion-reduce:animate-none dark:bg-slate-700" />
+                        </div>
+                      </td>
+
+                      <td className="h-[6.45rem] border-b border-r border-slate-200 px-4 dark:border-slate-600">
+                        <div className="mx-auto h-7 w-20 rounded-full bg-slate-200 animate-pulse motion-reduce:animate-none dark:bg-slate-700" />
+                      </td>
+
+                      <td className="h-[6.45rem] border-b border-r border-slate-200 px-4 dark:border-slate-600">
+                        <div className="mx-auto h-7 w-20 rounded-full bg-slate-200 animate-pulse motion-reduce:animate-none dark:bg-slate-700" />
+                      </td>
+
+                      {Array.from({ length: 4 }, (_, weekIndex) => (
+                        <Fragment
+                          key={`ratings-loading-cells-${rowIndex}-${weekIndex}`}
+                        >
+                          <td className="h-[6.45rem] border-b border-r border-slate-200 px-4 dark:border-slate-600">
+                            <div className="mx-auto h-9 w-14 rounded-xl bg-slate-200 animate-pulse motion-reduce:animate-none dark:bg-slate-700" />
+                          </td>
+
+                          <td className="h-[6.45rem] border-b border-r border-slate-200 px-4 dark:border-slate-600">
+                            <div className="space-y-2">
+                              <div className="h-2.5 w-full rounded-full bg-slate-200 animate-pulse motion-reduce:animate-none dark:bg-slate-700" />
+                              <div className="h-2.5 w-4/5 rounded-full bg-slate-200 animate-pulse motion-reduce:animate-none dark:bg-slate-700" />
+                            </div>
+                          </td>
+                        </Fragment>
+                      ))}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : error ? (
+          <div className="p-10 text-center">
+            <p className="font-bold text-red-600 dark:text-red-300">
+              {error.response?.data?.error ||
+                'Failed to load department ratings'}
+            </p>
+            <button
+              type="button"
+              onClick={onRetry}
+              className="mt-4 rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white"
+            >
+              Retry
+            </button>
+          </div>
+        ) : availableMonths.length === 0 ? (
+          <div className="p-12 text-center text-sm font-semibold text-slate-500 dark:text-slate-400">
+            No rating months are available for this department.
+          </div>
+        ) : data?.members?.length ? (
+          <RatingsGrid
+            members={data.members}
+            search={search}
+            fullScreen={isFullScreen}
+            selectedMonth={selectedMonth}
+          />
+        ) : (
+          <div className="p-12 text-center text-sm font-semibold text-slate-500 dark:text-slate-400">
+            No members are available in this department view.
+          </div>
+        )}
+      </div>
     </div>
   );
 
-  return (
-    <>
-      {renderContent(false)}
-      {fullScreen &&
-        createPortal(
-          <div className="fixed inset-0 z-[9999] overflow-hidden bg-slate-950/80 p-3 backdrop-blur-sm md:p-6">
-            <div className="mx-auto h-full max-w-[1800px]">
-              {renderContent(true)}
-            </div>
-          </div>,
-          document.body
-        )}
-    </>
-  );
+  if (fullScreen) {
+    return createPortal(
+      <div className="fixed inset-0 z-[9999] overflow-hidden bg-slate-950/80 p-3 backdrop-blur-sm md:p-6">
+        <div className="mx-auto h-full max-w-[1800px]">
+          {renderContent(true)}
+        </div>
+      </div>,
+      document.body
+    );
+  }
+
+  return renderContent(false);
 }

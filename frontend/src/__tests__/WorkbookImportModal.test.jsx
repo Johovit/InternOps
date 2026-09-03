@@ -197,3 +197,22 @@ test('expanded preview keeps metric cards compact', () => {
   expect(source).toContain('auto-rows-min');
   expect(source).not.toContain("h-[calc(100vh-2rem)]'");
 });
+
+test('source supports reviewed database attendance conflict resolution', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const source = fs.readFileSync(
+    path.resolve(__dirname, '../components/admin/WorkbookImportModal.jsx'),
+    'utf8'
+  );
+  expect(source).toContain("import CustomSelect from '../CustomSelect'");
+  expect(source).toContain('Keep all existing');
+  expect(source).toContain('Use all workbook values');
+  expect(source).toContain('attendanceResolutions');
+  expect(source).toContain('Clear email workbook');
+  expect(source).toContain('Unresolved: {unresolvedDatabaseCount}');
+  expect(source).toContain('Keep existing: {keptExistingCount}');
+  expect(source).toContain('Use workbook: {useWorkbookCount}');
+  expect(source).toContain('setDatabaseResolutions({});');
+  expect(source).not.toContain("(conflict) => [conflict.id, 'KEEP_EXISTING']");
+});
