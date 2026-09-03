@@ -59,7 +59,7 @@ describe('AI Chat Integration Tests (#498)', () => {
 
   function mockProviderSuccess() {
     let callCount = 0;
-    global.fetch = jest.fn().mockImplementation(async () => {
+    jest.spyOn(global, 'fetch').mockImplementation(async () => {
       callCount += 1;
       return {
         ok: true,
@@ -110,7 +110,7 @@ describe('AI Chat Integration Tests (#498)', () => {
       await app.close();
       const pool = require('../../src/config/db');
       await pool.end();
-      delete global.fetch;
+      jest.restoreAllMocks();
     });
 
     it('should cache and reuse response for same user with same prompt', async () => {
@@ -168,7 +168,7 @@ describe('AI Chat Integration Tests (#498)', () => {
       await app.close();
       const pool = require('../../src/config/db');
       await pool.end();
-      delete global.fetch;
+      jest.restoreAllMocks();
     });
 
     it('should handle more prompts than cache max without crashing', async () => {
@@ -277,7 +277,7 @@ describe('AI Chat Integration Tests (#498)', () => {
       await app.close();
       const pool = require('../../src/config/db');
       await pool.end();
-      delete global.fetch;
+      jest.restoreAllMocks();
     });
 
     it('should allow requests up to rate limit', async () => {
@@ -348,6 +348,8 @@ describe('AI Chat Integration Tests (#498)', () => {
           full_name: 'TL Size Limit Test',
         },
       });
+      console.log('REGISTER STATUS:', regRes.statusCode);
+      console.log('REGISTER BODY:', regRes.body);
       expect(regRes.statusCode).toBe(201);
       await pool.query(
         'UPDATE users SET email_verified = TRUE WHERE email = $1',
@@ -369,7 +371,7 @@ describe('AI Chat Integration Tests (#498)', () => {
       await app.close();
       const pool = require('../../src/config/db');
       await pool.end();
-      delete global.fetch;
+      jest.restoreAllMocks();
     });
 
     it('should reject responses exceeding size limit', async () => {
@@ -395,6 +397,109 @@ describe('AI Chat Integration Tests (#498)', () => {
       });
 
       // Should be rejected with error status
+      expect([413, 503, 502, 504, 400]).toContain(res.statusCode);
+    });
+  });
+  describe('Layer 4: Response size cap - default limit', () => {
+    beforeAll(async () => {
+      // Remove the custom value so the production default is used.
+      delete process.env.AI_MAX_RESPONSE_BYTES;
+
+      process.env.AI_CACHE_MAX_ENTRIES = '100';
+      process.env.AI_CHAT_RATE_LIMIT_PER_MIN = '100';
+      process.env.AI_PROVIDER_ORDER = 'groq';
+      process.env.GROQ_API_KEY = 'test-key';
+      process.env.AI_TIMEOUT = '5000';
+
+      // Reload modules so aiProviderService reads the default value.
+      jest.resetModules();
+      app = require('../../src/app');
+      await app.ready();
+
+      await resetSeededAdminPassword();
+
+      const pool = require('../../src/config/db');
+      await pool.query('DELETE FROM ai_usage');
+
+      cookies = {};
+
+      const csrfRes = await app.inject({
+        method: 'GET',
+        url: '/api/v1/auth/csrf-token',
+      });
+
+      csrfToken = JSON.parse(csrfRes.body).csrfToken;
+      mergeCookies(cookies, parseSetCookie(csrfRes.headers['set-cookie']));
+      mergeCookies(cookies, csrfRes.cookies);
+
+      await login();
+
+      const uniqueEmail = `tl-size-default-${Date.now()}@example.com`;
+
+      const regRes = await inject('POST', '/api/v1/auth/register', {
+        payload: {
+          email: uniqueEmail,
+          password: 'TLPassword123!',
+          role: 'TL',
+          full_name: 'TL Default Size Limit Test',
+        },
+      });
+
+      expect(regRes.statusCode).toBe(201);
+
+      await pool.query(
+        'UPDATE users SET email_verified = TRUE WHERE email = $1',
+        [uniqueEmail]
+      );
+
+      cookies = {};
+
+      const csrfRes2 = await app.inject({
+        method: 'GET',
+        url: '/api/v1/auth/csrf-token',
+      });
+
+      csrfToken = JSON.parse(csrfRes2.body).csrfToken;
+      mergeCookies(cookies, parseSetCookie(csrfRes2.headers['set-cookie']));
+      mergeCookies(cookies, csrfRes2.cookies);
+
+      await login(uniqueEmail, 'TLPassword123!');
+    });
+
+    afterAll(async () => {
+      await app.close();
+
+      const pool = require('../../src/config/db');
+      await pool.end();
+
+      jest.restoreAllMocks();
+    });
+
+    it('should reject responses exceeding the default 5 MB limit', async () => {
+      const oversizedResponseBytes = 6 * 1024 * 1024;
+
+      global.fetch = jest.fn().mockImplementation(async () => {
+        return {
+          ok: true,
+          status: 200,
+          headers: {
+            get: (key) => {
+              if (key === 'content-length') {
+                return String(oversizedResponseBytes);
+              }
+              return null;
+            },
+          },
+          json: async () => ({}),
+        };
+      });
+
+      const res = await inject('POST', '/api/v1/ai/chat', {
+        payload: {
+          prompt: 'test default oversized response',
+        },
+      });
+
       expect([413, 503, 502, 504, 400]).toContain(res.statusCode);
     });
   });
@@ -454,7 +559,7 @@ describe('AI Chat Integration Tests (#498)', () => {
       await app.close();
       const pool = require('../../src/config/db');
       await pool.end();
-      delete global.fetch;
+      jest.restoreAllMocks();
     });
 
     it('should never allow successful requests to exceed dailyLimit under concurrent load', async () => {

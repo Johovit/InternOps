@@ -225,6 +225,16 @@ async function revokeCertificate(id, reason = null) {
 // ============================================================
 
 async function startBulkGeneration(data, userId) {
+  const MAX_BULK_CERTIFICATES = 500;
+
+  if (data.certificates.length > MAX_BULK_CERTIFICATES) {
+    const err = new Error(
+      `Bulk generation limit exceeded: maximum ${MAX_BULK_CERTIFICATES} certificates per request (received ${data.certificates.length})`
+    );
+    err.statusCode = 400;
+    throw err;
+  }
+
   const job = await repo.createBulkJob(
     {
       template_id: data.template_id,
@@ -518,7 +528,7 @@ async function quickGenerate(data, userId) {
 
   // 3b. Split text pieces for the branded PDF layout
   const roleLine = data.role
-    ? `has successfully completed their internship as ${data.role} of domain`
+    ? `has successfully completed their internship as ${data.role} in the domain of`
     : 'has successfully completed their internship in the domain of';
   const dateRangeText = `from ${startFormatted} to ${endFormatted}`;
   const pdfBody =

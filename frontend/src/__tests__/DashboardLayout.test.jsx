@@ -22,10 +22,16 @@ vi.mock('../lib/axios', () => ({
   clearCsrfToken: vi.fn(),
 }));
 
-// Mock socket
+// Mock socket — connectSocket returns a fake socket exposing on/off so tests
+// can simulate server-pushed events (e.g. 'notification-received').
+const fakeSocket = {
+  on: vi.fn(),
+  off: vi.fn(),
+};
 vi.mock('../lib/socket', () => ({
-  connectSocket: vi.fn(),
+  connectSocket: vi.fn(() => fakeSocket),
   disconnectSocket: vi.fn(),
+  getSocket: vi.fn(() => fakeSocket),
 }));
 
 const mockNavigate = vi.fn();
@@ -83,7 +89,7 @@ describe('DashboardLayout Component Tests', () => {
   const renderLayout = () => {
     return render(
       <QueryClientProvider client={queryClient}>
-        <MemoryRouter>
+        <MemoryRouter initialEntries={['/notifications']}>
           <DashboardLayout />
         </MemoryRouter>
       </QueryClientProvider>
@@ -105,7 +111,9 @@ describe('DashboardLayout Component Tests', () => {
     expect(screen.getByText('Ratings')).toBeInTheDocument();
     expect(screen.getByText('Tasks')).toBeInTheDocument();
     expect(screen.getByText('Meetings')).toBeInTheDocument();
-    expect(screen.getByText('Notifications')).toBeInTheDocument();
+    expect(
+      screen.getAllByRole('link', { name: 'Notifications' })[0]
+    ).toHaveAttribute('href', '/notifications');
     expect(screen.getByText('Profile')).toBeInTheDocument();
     expect(screen.getByText('Sessions')).toBeInTheDocument();
 
@@ -241,5 +249,46 @@ describe('DashboardLayout Component Tests', () => {
     // Badge shouldn't be present
     expect(screen.queryByText('0')).not.toBeInTheDocument();
     expect(screen.queryByText('9+')).not.toBeInTheDocument();
+  });
+
+  it('updates the badge instantly from a "notification-received" socket event', async () => {
+    useAuthStore.setState({
+      accessToken: 'token',
+      user: { id: '1', email: 'user@example.com', role: 'INTERN' },
+    });
+
+    api.get.mockImplementation((url) => {
+      if (url === '/users/me') {
+        return Promise.resolve({
+          data: { full_name: 'Jane Doe', avatar_url: 'avatar.jpg' },
+        });
+      }
+      if (url === '/notifications/unread-count') {
+        return Promise.resolve({ data: { unread: 0 } });
+      }
+      return Promise.resolve({ data: {} });
+    });
+
+    renderLayout();
+
+    // Starts with no badge.
+    await screen.findByText('Dashboard', { selector: 'span' });
+    expect(screen.queryByText('3')).not.toBeInTheDocument();
+
+    // The component should have registered a listener via the socket
+    // returned from connectSocket().
+    expect(fakeSocket.on).toHaveBeenCalledWith(
+      'notification-received',
+      expect.any(Function)
+    );
+    const handler = fakeSocket.on.mock.calls.find(
+      ([event]) => event === 'notification-received'
+    )[1];
+
+    // Simulate the server pushing a new notification with an updated count.
+    handler({ notification: { id: 'n1' }, unreadCount: 3 });
+
+    // Badge should update immediately, with no extra fetch needed.
+    expect(await screen.findByText('3')).toBeInTheDocument();
   });
 });
