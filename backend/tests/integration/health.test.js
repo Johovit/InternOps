@@ -31,11 +31,11 @@ describe('Health Check Integration Tests', () => {
     });
   });
 
-  describe('GET /health/full', () => {
+  describe('GET /health/detailed', () => {
     it('should return health status', async () => {
       const res = await app.inject({
         method: 'GET',
-        url: '/health/full',
+        url: '/health/detailed',
       });
 
       expect([200, 503]).toContain(res.statusCode);
