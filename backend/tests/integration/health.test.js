@@ -33,7 +33,10 @@ describe('Health Check Integration Tests', () => {
 
   describe('GET /health/detailed', () => {
     it('should return health status when authenticated as admin', async () => {
-      const { SEEDED_ADMIN_EMAIL, SEEDED_ADMIN_PASSWORD } = require('../../src/config/test.constants');
+      const {
+        SEEDED_ADMIN_EMAIL,
+        SEEDED_ADMIN_PASSWORD,
+      } = require('../../src/config/test.constants');
       const loginRes = await app.inject({
         method: 'POST',
         url: '/api/v1/auth/login',
@@ -45,8 +48,8 @@ describe('Health Check Integration Tests', () => {
         method: 'GET',
         url: '/health/detailed',
         headers: {
-          Authorization: `Bearer ${token}`
-        }
+          Authorization: `Bearer ${token}`,
+        },
       });
 
       expect([200, 503]).toContain(res.statusCode);
