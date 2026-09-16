@@ -206,15 +206,17 @@ describe('Risk Score Computation', () => {
 describe('Explainability Factors', () => {
   test('generates factors for a high-risk intern', () => {
     const data = makeData({
-      tasks_assigned: 10,
-      tasks_completed: 3,
-      tasks_late: 4,
-      tasks_overdue: 3,
-      completion_rate: 30,
-      deadline_miss_rate: 40,
-      attendance_rate: 50,
-      attendance_total_marked: 15,
-      avg_rating: 3.5,
+      tasks_assigned: 20,
+      tasks_completed: 2,
+      tasks_late: 8,
+      tasks_overdue: 5,
+      completion_rate: 10,
+      deadline_miss_rate: 80,
+      attendance_rate: 20,
+      attendance_total_marked: 20,
+      attendance_present: 4,
+      avg_rating: 1.5,
+      ratings_count: 5,
     });
     const { features } = engineerFeatures(data);
     const factors = buildFactors(features, data);
