@@ -38,12 +38,16 @@ class UsageResponse(BaseModel):
     date: str
     users: list
 
-#  New schema for generation requests
-class GenerationRequest(BaseModel):
+
+class ImageGenerationRequest(BaseModel):
     prompt: str = Field(..., max_length=2000)
-    temperature: float = Field(default=0.7, ge=0.0, le=2.0)
 
     @field_validator("prompt")
     @classmethod
     def validate_prompt(cls, v: str) -> str:
         return sanitize_user_input(v)
+
+
+class ImageGenerationResponse(BaseModel):
+    provider: str
+    image_base64: str

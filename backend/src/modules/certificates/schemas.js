@@ -70,6 +70,7 @@ const certificateGenerateSchema = z
 
 const bulkGenerateSchema = z.object({
   template_id: z.string().uuid(),
+
   certificates: z
     .array(
       z.object({
@@ -92,6 +93,7 @@ const bulkGenerateSchema = z.object({
     )
     .min(1)
     .max(500),
+
   send_email: z.boolean().default(false),
   email_subject: z.string().max(500).optional(),
   email_body: z.string().optional(),
