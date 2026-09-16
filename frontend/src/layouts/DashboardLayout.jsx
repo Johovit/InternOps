@@ -32,6 +32,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Inbox,
+  Activity,
 } from 'lucide-react';
 
 import {
@@ -120,6 +121,12 @@ const nav = [
     path: '/performance-intelligence',
     label: 'AI Performance Review',
     icon: Sparkles,
+  },
+  {
+    path: '/risk-intelligence',
+    label: 'Risk Intelligence',
+    icon: Activity,
+    allowedRoles: MANAGER_ROLES,
   },
   {
     path: '/reports',
@@ -240,6 +247,7 @@ const COORDINATED_LOADING_ROUTES = new Set([
   '/sessions',
   '/internops',
   '/performance-intelligence',
+  '/risk-intelligence',
   '/reports',
   '/report-templates',
   '/exports',
