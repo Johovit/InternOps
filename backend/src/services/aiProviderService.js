@@ -367,7 +367,7 @@ async function callDeepSeek(messages) {
 async function callGemini(messages) {
   const prompt = buildPrompt(messages);
   const key = config.ai.geminiKey || '';
-  const modelName = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
+  const modelName = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
 
   if (!GoogleGenAI) throw new Error('GoogleGenAI dependency not loaded');
   const ai = new GoogleGenAI({ apiKey: key });
@@ -418,13 +418,17 @@ async function callHuggingFace(messages) {
   return text;
 }
 
-async function callFastAPI(messages) {
+async function callFastAPI(messages, authorization) {
   const baseUrl = config.ai.fastapiUrl || 'http://localhost:8000';
+  const headers = {
+    'Content-Type': 'application/json',
+  };
+  if (authorization) {
+    headers['Authorization'] = authorization;
+  }
   const response = await fetchWithTimeout(`${baseUrl}/ai/chat`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers,
     body: JSON.stringify({ messages }),
   });
 
@@ -508,7 +512,7 @@ function createFallbackResponse(errors) {
   };
 }
 
-async function generateAIResponse({ userId, messages }) {
+async function generateAIResponse({ userId, messages, authorization }) {
   const safeMessages = Array.isArray(messages) ? messages : [];
   const sanitizedMessages = safeMessages.slice(-16).map((m) => ({
     role: m.role,
@@ -552,7 +556,7 @@ async function generateAIResponse({ userId, messages }) {
     }
 
     try {
-      const content = await provider.call(sanitizedMessages);
+      const content = await provider.call(sanitizedMessages, authorization);
 
       recordSuccess(providerName);
 

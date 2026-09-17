@@ -138,13 +138,6 @@ async def chat(
             detail="Message content cannot be empty",
         )
 
-    usage = await get_today_usage(current_user.id)
-    if usage >= DAILY_AI_LIMIT:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Daily AI usage limit exceeded",
-        )
-
     try:
         result = await call_provider(current_user.id, final_messages)
         await increment_usage(current_user.id)
@@ -188,13 +181,6 @@ async def generate_image(
     current_user: User = Depends(get_current_user),
     _rate_limited: None = Depends(chat_rate_limiter.check_rate_limit),
 ):
-    usage = await get_today_usage(current_user.id)
-    if usage >= DAILY_AI_LIMIT:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Daily AI usage limit exceeded",
-        )
-
     try:
         image_base64, used_provider = await ai_orchestrator.generate_image_with_fallback(
             body.prompt

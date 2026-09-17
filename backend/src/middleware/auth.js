@@ -69,7 +69,8 @@ async function authMiddleware(request, reply) {
         code: 'PASSWORD_CHANGE_REQUIRED',
       });
     }
-  } catch {
+  } catch (err) {
+    request.log.error(err, 'Auth error');
     return reply.status(401).send({ error: 'Invalid token' });
   }
 }

@@ -53,11 +53,18 @@ export function UserAvatar({
   size = 'w-9 h-9',
   text = 'text-sm',
 }) {
-  if (src) {
+  const [imageError, setImageError] = useState(false);
+
+  useEffect(() => {
+    setImageError(false);
+  }, [src]);
+
+  if (src && !imageError) {
     return (
       <img
         src={src}
         alt=""
+        onError={() => setImageError(true)}
         className={`${size} rounded-full object-cover border border-white/70 dark:border-slate-700 shadow-sm`}
       />
     );

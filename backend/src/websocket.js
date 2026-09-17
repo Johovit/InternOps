@@ -275,4 +275,8 @@ async function notifyUser(userId, event, data) {
   io.to(`user_${userId}`).emit(event, data);
 }
 
-module.exports = { initializeWebSocket, getIO, notifyUser };
+function broadcastMutation(type, payload = {}) {
+  if (io) io.emit('database:mutation', { type, ...payload });
+}
+
+module.exports = { initializeWebSocket, getIO, notifyUser, broadcastMutation };

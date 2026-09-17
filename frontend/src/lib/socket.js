@@ -3,6 +3,8 @@ import { io } from 'socket.io-client';
 let socket = null;
 
 export function connectSocket(token) {
+  if (!token) return null;
+
   if (socket) {
     if (socket.connected || socket.active) {
       return socket;
@@ -18,6 +20,7 @@ export function connectSocket(token) {
 
   socket = io(apiUrl, {
     auth: { token },
+    extraHeaders: token ? { Authorization: `Bearer ${token}` } : {},
     withCredentials: true,
     autoConnect: true,
   });
