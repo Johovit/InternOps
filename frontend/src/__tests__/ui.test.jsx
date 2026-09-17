@@ -38,6 +38,21 @@ describe('Shared UI Components Test Suite', () => {
     expect(screen.getByText('JD')).toBeInTheDocument();
   });
 
+  it('renders UserAvatar with initials when image fails to load', () => {
+    const { container } = render(
+      <UserAvatar
+        name="John Doe"
+        email="john@example.com"
+        src="broken-avatar.jpg"
+      />
+    );
+    const img = container.querySelector('img');
+    expect(img).toBeInTheDocument();
+    fireEvent.error(img);
+    expect(screen.getByText('JD')).toBeInTheDocument();
+    expect(container.querySelector('img')).toBeNull();
+  });
+
   // 4. Card
   it('renders Card content and applies custom className', () => {
     render(

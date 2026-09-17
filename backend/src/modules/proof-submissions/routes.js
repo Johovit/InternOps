@@ -14,6 +14,7 @@ const { fetchProofContent } = require('../social-tasks/crawler.service');
 const { verifyClaim } = require('../social-tasks/ai-verify.service');
 const { checkHierarchyAccess } = require('../../utils/hierarchy');
 const verificationService = require('./verification.service');
+const { broadcastMutation } = require('../../websocket');
 
 async function routes(fastify) {
   // Submit proof (intern only)
@@ -239,6 +240,13 @@ async function routes(fastify) {
           resourceId: result.id,
         };
 
+        broadcastMutation('proof', {
+          id: result.id,
+          intern_id: result.intern_id,
+          task_id: result.task_id,
+          status: result.status,
+        });
+
         return result;
       } catch (err) {
         if (err.message === 'Proof not found') {
@@ -280,6 +288,13 @@ async function routes(fastify) {
           resourceType: 'proof',
           resourceId: rejected.id,
         };
+
+        broadcastMutation('proof', {
+          id: rejected.id,
+          intern_id: rejected.intern_id,
+          task_id: rejected.task_id,
+          status: rejected.status,
+        });
 
         return rejected;
       } catch (err) {

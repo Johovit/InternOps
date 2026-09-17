@@ -212,9 +212,29 @@ describe('Auth Service', () => {
           email: user.email,
           role: user.role,
           full_name: user.full_name,
+          avatar_url: null,
           mustChangePassword: false,
         },
       });
+    });
+
+    it('login() returns user with avatar_url when present', async () => {
+      const userWithAvatar = {
+        id: 'user-1',
+        email,
+        role: 'EMPLOYEE',
+        full_name: 'Test User',
+        avatar_url: '/uploads/custom_avatar.png',
+        suspended: false,
+      };
+      incrementAttempt.mockResolvedValue(1);
+      repo.findByEmail.mockResolvedValue(userWithAvatar);
+      repo.verifyPassword.mockResolvedValue(true);
+      repo.storeRefreshTokenRedis.mockResolvedValue(undefined);
+
+      const result = await service.login(email, password, ip, userAgent);
+
+      expect(result.user.avatar_url).toBe('/uploads/custom_avatar.png');
     });
 
     it('login() invalid credentials', async () => {
@@ -337,6 +357,7 @@ describe('Auth Service', () => {
             email: user.email,
             role: user.role,
             full_name: user.full_name,
+            avatar_url: null,
             mustChangePassword: false,
           },
         });

@@ -15,7 +15,6 @@ const {
   bulkSend,
   getUnreadCount,
 } = require('../notifications/repository');
-const pool = require('../../config/db');
 const { z } = require('zod');
 const { decodeCursor, encodeCursor } = require('../../utils/keysetCursor');
 
@@ -500,43 +499,10 @@ async function routes(fastify) {
           const department_id = req.query?.department_id;
 
           if (department_id) {
-            const res = await pool.query(
-              `SELECT id, full_name, email, role, department_id
-               FROM users
-               WHERE deleted_at IS NULL AND department_id = $1
-               ORDER BY CASE role
-                 WHEN 'ADMIN' THEN 0
-                 WHEN 'SENIOR_TL' THEN 1
-                 WHEN 'TL' THEN 2
-                 WHEN 'CAPTAIN' THEN 3
-                 WHEN 'INTERN' THEN 4
-                 ELSE 5
-               END,
-               LOWER(COALESCE(NULLIF(TRIM(full_name), ''), email)),
-               LOWER(email), id`,
-              [department_id]
-            );
-
-            return res.rows;
+            return await repo.getUsersByDepartment(department_id);
           }
 
-          const all = await pool.query(
-            `SELECT id, full_name, email, role, department_id
-             FROM users
-             WHERE deleted_at IS NULL
-             ORDER BY CASE role
-               WHEN 'ADMIN' THEN 0
-               WHEN 'SENIOR_TL' THEN 1
-               WHEN 'TL' THEN 2
-               WHEN 'CAPTAIN' THEN 3
-               WHEN 'INTERN' THEN 4
-               ELSE 5
-             END,
-             LOWER(COALESCE(NULLIF(TRIM(full_name), ''), email)),
-             LOWER(email), id`
-          );
-
-          return all.rows;
+          return await repo.getAllUsers();
         }
 
         return await repo.getAuthorizedSubordinates(

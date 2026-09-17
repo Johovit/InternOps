@@ -120,6 +120,7 @@ function publicUser(user) {
     email: user.email,
     role: user.role,
     full_name: user.full_name,
+    avatar_url: user.avatar_url || null,
     mustChangePassword: Boolean(user.must_change_password),
   };
 }
