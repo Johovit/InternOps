@@ -16,12 +16,14 @@ import {
 } from 'lucide-react';
 import api from '../../lib/axios';
 import { Card, Spinner, EmptyState } from '../../components/ui';
+import { ROLE_LABEL } from '../../constants/roles';
 import UserActionMenu from '../../components/UserActionMenu';
 import CreateUserModal from '../../components/admin/CreateUserModal';
 import EditUserModal from '../../components/admin/EditUserModal';
 import CustomSelect from '../../components/CustomSelect';
 import BulkUserModal from '../../components/admin/BulkUserModal';
-
+import WorkbookImportModal from '../../components/admin/WorkbookImportModal';
+import { useRouteInitialLoading } from '../../components/loading/RouteInitialLoading';
 const ROLE_COLOR = {
   ADMIN:
     'bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 border border-violet-100 dark:border-violet-900/60',
@@ -86,7 +88,7 @@ export default function AdminDashboard() {
   const [createUserOpen, setCreateUserOpen] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
   const [bulkUserOpen, setBulkUserOpen] = useState(false);
-
+  const [workbookImportOpen, setWorkbookImportOpen] = useState(false);
   const limit = 100;
 
   useEffect(() => {
@@ -128,6 +130,8 @@ export default function AdminDashboard() {
         .then((res) => res.data),
     placeholderData: keepPreviousData,
   });
+
+  const routeInitialLoading = useRouteInitialLoading(isLoading && !data);
 
   const invalidateUsers = () =>
     queryClient.invalidateQueries({ queryKey: ['adminUsers'] });
@@ -319,7 +323,7 @@ export default function AdminDashboard() {
 
       {/* Virtualized Users Table */}
       <div className="rounded-3xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 overflow-hidden shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
-        {isLoading ? (
+        {routeInitialLoading ? (
           <Spinner />
         ) : rows.length === 0 ? (
           <EmptyState
@@ -399,7 +403,7 @@ export default function AdminDashboard() {
                               ROLE_COLOR[u.role] || ROLE_COLOR.INTERN
                             }`}
                           >
-                            {u.role}
+                            {ROLE_LABEL[u.role] || u.role}
                           </span>
                         </div>
 
@@ -494,6 +498,11 @@ export default function AdminDashboard() {
       <BulkUserModal
         open={bulkUserOpen}
         onClose={() => setBulkUserOpen(false)}
+      />
+
+      <WorkbookImportModal
+        open={workbookImportOpen}
+        onClose={() => setWorkbookImportOpen(false)}
       />
     </div>
   );
