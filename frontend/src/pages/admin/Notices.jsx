@@ -237,9 +237,8 @@ function NoticeForm({
         placeholder="Notice content…"
         value={content}
         onChange={(e) => setContent(e.target.value)}
-        rows={3}
         disabled={isPending || isAiLoading}
-        className="w-full rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3 text-sm text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400/50 resize-none transition disabled:opacity-60 disabled:cursor-not-allowed"
+        className="w-full rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-700/80 px-4 py-3 text-sm text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400/50 resize-none transition disabled:opacity-60 disabled:cursor-not-allowed"
       />
 
       <div className="flex justify-end -mt-1 mb-2">
@@ -313,23 +312,25 @@ function NoticeForm({
         </div>
       )}
 
-      <div className="flex flex-col sm:flex-row gap-3">
-        <Input
-          placeholder="Action Button Text (e.g. Apply Now)"
-          value={action_button_text}
-          onChange={(e) => setActionButtonText(e.target.value)}
-          disabled={isPending}
-          className="flex-1"
-        />
-        <div className="flex-1 relative">
-          <LinkIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="min-w-0">
+          <Input
+            placeholder="Action Button Text (e.g. Apply Now)"
+            value={action_button_text}
+            onChange={(e) => setActionButtonText(e.target.value)}
+            disabled={isPending}
+            className="h-[52px] min-w-0 rounded-2xl text-sm dark:!border-slate-700 dark:!bg-slate-800/70"
+          />
+        </div>
+        <div className="relative min-w-0">
+          <LinkIcon className="pointer-events-none absolute left-4 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input
             type="url"
             placeholder="Action Button Link (https://...)"
             value={action_button_link}
             onChange={(e) => setActionButtonLink(e.target.value)}
             disabled={isPending}
-            className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 pl-10 pr-4 py-2 text-sm text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-indigo-400/50 transition disabled:opacity-60 disabled:cursor-not-allowed"
+            className="h-[52px] w-full min-w-0 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/70 pl-11 pr-4 text-sm text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400/50 transition disabled:opacity-60 disabled:cursor-not-allowed"
           />
         </div>
       </div>
