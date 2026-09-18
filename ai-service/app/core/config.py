@@ -59,37 +59,6 @@ def _get_key_attr(provider_name: str) -> str:
         return "HUGGINGFACE_TOKEN"
     return f"{provider_clean.upper()}_API_KEY"
 
-# Load .env file using dotenv to ensure os.environ is populated
-load_dotenv()
-
-# Maximum AI requests allowed per minute for a user/client
-RATE_LIMIT_PER_MINUTE = int(
-    os.getenv("RATE_LIMIT_PER_MINUTE", "15")
-)
-
-# ==============================================================================
-# Centralized Configuration Constraints
-# ==============================================================================
-SUPPORTED_PROVIDERS = {"gemini", "groq", "openai", "anthropic", "deepseek", "huggingface"}
-
-DEFAULT_MODELS = {
-    "gemini": "gemini-2.5-flash",
-    "groq": "llama-3.3-70b-versatile",
-    "openai": "gpt-4o-mini",
-    "anthropic": "claude-3-5-sonnet-latest",
-    "deepseek": "deepseek-chat",
-    "huggingface": "meta-llama/Llama-3-8b-instruct"
-}
-
-PLACEHOLDER_KEYS = {
-    "your_gemini_api_key",
-    "your_groq_api_key",
-    "your_openai_api_key",
-    "your_anthropic_api_key",
-    "your_deepseek_api_key",
-    "your_huggingface_token"
-}
-
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -132,6 +101,11 @@ class Settings(BaseSettings):
     DATABASE_URL: Optional[str] = None
     REDIS_URL: Optional[str] = None
     AI_CACHE_TTL: int = 3600
+    # Hard cap on entries kept in the local in-memory fallback cache. Without
+    # Redis configured, every distinct AI request would otherwise accumulate
+    # in this process-local dict for the full TTL, growing without bound
+    # under concurrent load and risking OOM (see issue #2060).
+    AI_MEMORY_CACHE_MAX_SIZE: int = 500
 
     # Circuit Breaker Configuration
     AI_PROVIDER_FAILURE_LIMIT: int = 3

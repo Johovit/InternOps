@@ -44,6 +44,33 @@ describe('API error-path integration tests', () => {
     expect(res.statusCode).toBe(204);
   });
 
+  it('handles malformed CSRF cookies without server errors or delays', async () => {
+    const cases = [
+      'csrf-sid=abc%',
+      'csrf-token=abc%',
+      'csrf-sid=1%20AND%20SLEEP(5)',
+      'csrf-token=1%20AND%20SLEEP(5)',
+    ];
+
+    for (const cookie of cases) {
+      const startedAt = Date.now();
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/v1/auth/csrf-token',
+        headers: { cookie },
+      });
+      const durationMs = Date.now() - startedAt;
+      const body = JSON.parse(res.body);
+
+      expect(res.statusCode).toBe(200);
+      expect(durationMs).toBeLessThan(2000);
+      expect(body.csrfToken).toEqual(expect.any(String));
+      expect(body.csrfToken).not.toHaveLength(0);
+      expect(res.body).not.toMatch(
+        /stack|sql|select|sleep\s*\(|node_modules|internal server error/i
+      );
+    }
+  });
   it('returns a sanitized 500 when a database operation fails', async () => {
     const dbError = new Error('database connection refused');
     const query = jest.spyOn(pool, 'query').mockRejectedValueOnce(dbError);

@@ -13,6 +13,7 @@ async function createTask({
   githubIssueUrl,
   source,
   imagePath,
+  departmentId,
 }) {
   const hasGithubFields =
     githubIssueId || githubIssueNumber || githubRepo || githubIssueUrl;
@@ -20,8 +21,9 @@ async function createTask({
     const res = await pool.query(
       `INSERT INTO social_tasks
         (title, description, target_platform, task_link, deadline, created_by,
-         github_issue_id, github_issue_number, github_repo, github_issue_url, source)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+         github_issue_id, github_issue_number, github_repo, github_issue_url, source,
+         department_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
        RETURNING *`,
       [
         title,
@@ -35,12 +37,13 @@ async function createTask({
         githubRepo || null,
         githubIssueUrl || null,
         source || 'manual',
+        departmentId || null,
       ]
     );
     return res.rows[0];
   }
   const res = await pool.query(
-    'INSERT INTO social_tasks (title, description, target_platform, task_link, deadline, created_by, image_path) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *',
+    'INSERT INTO social_tasks (title, description, target_platform, task_link, deadline, created_by, image_path, department_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',
     [
       title,
       description,
@@ -49,6 +52,7 @@ async function createTask({
       deadline,
       createdBy,
       imagePath || null,
+      departmentId || null,
     ]
   );
   return res.rows[0];
@@ -70,6 +74,14 @@ async function assignTask(taskId, userIds, assignedBy) {
     [taskId, ...userIds, assignedBy]
   );
 }
+async function getActiveDepartmentById(departmentId) {
+  const res = await pool.query(
+    'SELECT id, name FROM departments WHERE id = $1 AND deleted_at IS NULL',
+    [departmentId]
+  );
+  return res.rows[0] || null;
+}
+
 async function getUserEmail(userId) {
   const res = await pool.query('SELECT email FROM users WHERE id = $1', [
     userId,
@@ -148,11 +160,21 @@ async function getTasks(filters, userId, userRole, page = 1, limit = 50) {
     const pIdx = params.length;
     where.push(
       `(
-         st.created_by IN (SELECT id FROM users WHERE department_id = $${pIdx}::uuid AND deleted_at IS NULL)
-         OR st.id IN (
-           SELECT ta.task_id FROM task_assignments ta 
-           JOIN users u ON u.id = ta.user_id 
-           WHERE u.department_id = $${pIdx}::uuid AND ta.deleted_at IS NULL
+         st.department_id = $${pIdx}::uuid
+         OR (
+           st.department_id IS NULL
+           AND (
+             st.created_by IN (
+               SELECT id FROM users
+               WHERE department_id = $${pIdx}::uuid AND deleted_at IS NULL
+             )
+             OR st.id IN (
+               SELECT ta.task_id FROM task_assignments ta
+               JOIN users u ON u.id = ta.user_id
+               WHERE u.department_id = $${pIdx}::uuid
+                 AND ta.deleted_at IS NULL
+             )
+           )
          )
       )`
     );
@@ -492,6 +514,91 @@ async function getTaskAnalytics(taskId) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Task-prerequisite graph helpers (DAG)
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetch every prerequisite edge that currently exists across ALL tasks.
+ * Used by the DAG validator to build the full graph in memory before
+ * checking whether a proposed new edge would introduce a cycle.
+ *
+ * @returns {Promise<Array<{task_id: string, prereq_id: string}>>}
+ */
+async function getAllPrerequisiteEdges() {
+  const res = await pool.query(
+    `SELECT task_id, prereq_id
+     FROM task_prerequisites
+     ORDER BY created_at ASC`
+  );
+  return res.rows;
+}
+
+/**
+ * Fetch prerequisite task details for a single task.
+ *
+ * @param {string} taskId
+ * @returns {Promise<Array>}  Rows from social_tasks joined with the edge metadata.
+ */
+async function getTaskPrerequisites(taskId) {
+  const res = await pool.query(
+    `SELECT
+       st.id,
+       st.title,
+       st.description,
+       st.deadline,
+       st.target_platform,
+       st.created_at,
+       tp.created_at AS prereq_added_at
+     FROM task_prerequisites tp
+     JOIN social_tasks st
+       ON st.id = tp.prereq_id
+      AND st.deleted_at IS NULL
+     WHERE tp.task_id = $1
+     ORDER BY tp.created_at ASC`,
+    [taskId]
+  );
+  return res.rows;
+}
+
+/**
+ * Insert a single prerequisite edge.
+ * Callers MUST validate that the edge is cycle-free before calling this.
+ *
+ * @param {string} taskId    Task that requires the prerequisite.
+ * @param {string} prereqId  Task that must be completed first.
+ * @param {string} createdBy User ID performing the operation.
+ * @returns {Promise<{task_id: string, prereq_id: string, created_at: Date}>}
+ */
+async function addPrerequisite(taskId, prereqId, createdBy) {
+  const res = await pool.query(
+    `INSERT INTO task_prerequisites (task_id, prereq_id, created_by)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (task_id, prereq_id) DO NOTHING
+     RETURNING task_id, prereq_id, created_at`,
+    [taskId, prereqId, createdBy]
+  );
+  return res.rows[0] || null;
+}
+
+/**
+ * Remove a single prerequisite edge.
+ *
+ * @param {string} taskId
+ * @param {string} prereqId
+ * @returns {Promise<boolean>}  true if a row was deleted, false if not found.
+ */
+async function removePrerequisite(taskId, prereqId) {
+  const res = await pool.query(
+    `DELETE FROM task_prerequisites
+     WHERE task_id = $1
+       AND prereq_id = $2
+     RETURNING task_id`,
+    [taskId, prereqId]
+  );
+  return res.rowCount > 0;
+}
+
 module.exports = {
   createTask,
   getTaskById,
@@ -500,6 +607,7 @@ module.exports = {
   deleteTask,
   assignTask,
   getUserEmail,
+  getActiveDepartmentById,
   isTaskAssignedToUser,
   getTasks,
   submitProof,
@@ -513,4 +621,8 @@ module.exports = {
   deleteProofImage,
   getAllInternEmails,
   getInternEmailCount,
+  getAllPrerequisiteEdges,
+  getTaskPrerequisites,
+  addPrerequisite,
+  removePrerequisite,
 };

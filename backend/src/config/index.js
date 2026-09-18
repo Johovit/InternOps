@@ -133,6 +133,105 @@ function buildRedisConfig() {
   };
 }
 
+function buildStorageConfig() {
+  const driver = (process.env.STORAGE_DRIVER || 'local').toLowerCase();
+
+  // Cloudinary credentials
+  const cloudinaryCloudName = process.env.CLOUDINARY_CLOUD_NAME?.trim();
+  const cloudinaryApiKey = process.env.CLOUDINARY_API_KEY?.trim();
+  const cloudinaryApiSecret = process.env.CLOUDINARY_API_SECRET?.trim();
+  const isCloudinaryConfigured = Boolean(
+    cloudinaryCloudName && cloudinaryApiKey && cloudinaryApiSecret
+  );
+
+  // R2 / S3 credentials
+  const accountId = process.env.R2_ACCOUNT_ID?.trim();
+  const accessKeyId =
+    process.env.R2_ACCESS_KEY_ID?.trim() ||
+    process.env.AWS_ACCESS_KEY_ID?.trim();
+  const secretAccessKey =
+    process.env.R2_SECRET_ACCESS_KEY?.trim() ||
+    process.env.AWS_SECRET_ACCESS_KEY?.trim();
+  const bucketName =
+    process.env.R2_BUCKET_NAME?.trim() || process.env.AWS_BUCKET_NAME?.trim();
+  const publicUrl =
+    process.env.R2_PUBLIC_URL?.trim() || process.env.AWS_PUBLIC_URL?.trim();
+  const endpoint =
+    process.env.R2_ENDPOINT?.trim() ||
+    (accountId ? `https://${accountId}.r2.cloudflarestorage.com` : undefined);
+  const region = process.env.AWS_REGION || 'auto';
+
+  const isS3Configured = Boolean(accessKeyId && secretAccessKey && bucketName);
+
+  let activeDriver = 'local';
+  if (
+    (driver === 'cloudinary' || driver === 'cloud') &&
+    isCloudinaryConfigured
+  ) {
+    activeDriver = 'cloudinary';
+  } else if (
+    isCloudinaryConfigured &&
+    !isS3Configured &&
+    driver !== 's3' &&
+    driver !== 'r2'
+  ) {
+    activeDriver = 'cloudinary';
+  } else if (['r2', 's3'].includes(driver) && isS3Configured) {
+    activeDriver = driver;
+  } else if (isS3Configured) {
+    activeDriver = 'r2';
+  }
+
+  return {
+    driver: activeDriver,
+    cloudinary: {
+      cloudName: cloudinaryCloudName,
+      apiKey: cloudinaryApiKey,
+      apiSecret: cloudinaryApiSecret,
+      isConfigured: isCloudinaryConfigured,
+    },
+    isCloudConfigured: isS3Configured || isCloudinaryConfigured,
+    accountId,
+    accessKeyId,
+    secretAccessKey,
+    bucketName,
+    publicUrl: publicUrl ? publicUrl.replace(/\/+$/, '') : null,
+    endpoint,
+    region,
+  };
+}
+
+function parseDurationToSeconds(value, fallbackSeconds) {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+    return Math.floor(value);
+  }
+
+  const match = String(value || '')
+    .trim()
+    .match(/^(\d+(?:\.\d+)?)\s*(ms|s|m|h|d|w|y)?$/i);
+
+  if (!match) return fallbackSeconds;
+
+  const amount = Number(match[1]);
+  const unit = (match[2] || 'ms').toLowerCase();
+
+  const multipliers = {
+    ms: 1 / 1000,
+    s: 1,
+    m: 60,
+    h: 60 * 60,
+    d: 24 * 60 * 60,
+    w: 7 * 24 * 60 * 60,
+    y: 365 * 24 * 60 * 60,
+  };
+
+  const seconds = amount * multipliers[unit];
+
+  return Number.isFinite(seconds) && seconds > 0
+    ? Math.floor(seconds)
+    : fallbackSeconds;
+}
+
 function buildCookieConfig() {
   const production = process.env.NODE_ENV === 'production';
   const sameSite = (
@@ -142,8 +241,20 @@ function buildCookieConfig() {
     ? process.env.COOKIE_SECURE === 'true'
     : production;
   const domain = process.env.COOKIE_DOMAIN?.trim() || undefined;
-  return { secure, sameSite, domain };
+
+  const refreshExpiry =
+    process.env.JWT_REFRESH_EXPIRES_IN || process.env.JWT_EXPIRES_IN || '7d';
+
+  const refreshMaxAge = parseDurationToSeconds(refreshExpiry, 7 * 24 * 60 * 60);
+
+  return {
+    secure,
+    sameSite,
+    domain,
+    maxAge: refreshMaxAge,
+  };
 }
+
 function resolveRefreshSecret() {
   const secret = process.env.JWT_REFRESH_SECRET;
 
@@ -183,6 +294,7 @@ module.exports = {
     process.env.APP_URL || process.env.CORS_ORIGIN || 'http://localhost:5173',
   cookie: buildCookieConfig(),
   redis: buildRedisConfig(),
+  storage: buildStorageConfig(),
   google: {
     clientId: process.env.GOOGLE_CLIENT_ID,
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,
@@ -212,6 +324,12 @@ module.exports = {
     authMax:
       parseInt(process.env.RATE_LIMIT_AUTH_MAX, 10) ||
       (process.env.NODE_ENV === 'test' ? 10000 : 50),
+    refreshMax:
+      parseInt(process.env.RATE_LIMIT_REFRESH_MAX, 10) ||
+      (process.env.NODE_ENV === 'test' ? 10000 : 60),
+    csrfMax:
+      parseInt(process.env.RATE_LIMIT_CSRF_MAX, 10) ||
+      (process.env.NODE_ENV === 'test' ? 10000 : 300),
     timeWindow: process.env.RATE_LIMIT_TIME_WINDOW || '1 minute',
     passwordResetCooldownMs:
       parseInt(process.env.PASSWORD_RESET_COOLDOWN_MS, 10) || 5 * 60 * 1000,

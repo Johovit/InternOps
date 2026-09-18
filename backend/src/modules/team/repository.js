@@ -1,5 +1,11 @@
 const pool = require('../../config/db');
 const argon2 = require('argon2');
+const {
+  MAX_HIERARCHY_DEPTH,
+  MAX_HIERARCHY_ROWS,
+  ROLE_RANK,
+  roleRankSql,
+} = require('../../utils/hierarchy');
 
 // Detail columns a manager is allowed to read for each member.
 const MEMBER_COLUMNS = `
@@ -55,23 +61,24 @@ async function getTeamMembers(managerId, departmentId) {
       FROM users
       WHERE id = $1 AND deleted_at IS NULL
     ), team AS (
-      SELECT u.id, u.manager_id, 1 AS depth
-      FROM users u
-      CROSS JOIN requester r
-      WHERE u.deleted_at IS NULL
-        AND u.role <> 'ADMIN'
-        AND u.id <> r.id
-        AND (
-          (r.role = 'SENIOR_TL' AND u.department_id = r.department_id)
-          OR (r.role <> 'SENIOR_TL' AND u.manager_id = r.id)
-        )
+      SELECT u.id, u.manager_id, 1 AS depth, ARRAY[r.id, u.id] AS path,
+         ${roleRankSql('u')} AS structural_rank
+      FROM requester r
+      INNER JOIN users u
+        ON u.deleted_at IS NULL
+       AND u.role <> 'ADMIN'
+       AND u.id <> r.id
+       AND u.manager_id = r.id
       UNION ALL
-      SELECT u.id, u.manager_id, t.depth + 1
-      FROM users u INNER JOIN team t ON u.manager_id = t.id
-      CROSS JOIN requester r
-      WHERE u.deleted_at IS NULL
-        AND r.role <> 'SENIOR_TL'
-        AND t.depth < 100
+      SELECT u.id, u.manager_id, t.depth + 1, t.path || u.id,
+             ${roleRankSql('u')} AS structural_rank
+      FROM team t
+      INNER JOIN users u
+        ON u.manager_id = t.id
+       AND u.deleted_at IS NULL
+       AND u.role <> 'ADMIN'
+       AND NOT u.id = ANY(t.path)
+      WHERE t.depth < $3
     )
     SELECT ${MEMBER_COLUMNS}, MIN(t.depth) AS depth, ${PERFORMANCE_COLUMNS}
     FROM team t
@@ -82,16 +89,24 @@ async function getTeamMembers(managerId, departmentId) {
       att.leave_count, att.attendance_total, rat.avg_rating, rat.rating_count,
       tsk.verified_tasks, tsk.pending_proofs, tsk.total_tasks
     ORDER BY
-      CASE u.role
-        WHEN 'SENIOR_TL' THEN 0
-        WHEN 'TL' THEN 1
-        WHEN 'CAPTAIN' THEN 2
-        WHEN 'INTERN' THEN 3
-        ELSE 4
-      END,
-      LOWER(COALESCE(u.full_name, u.email))
+      MIN(t.structural_rank),
+      MIN(t.depth),
+      LOWER(COALESCE(NULLIF(TRIM(u.full_name), ''), u.email)),
+      LOWER(u.email),
+      u.id
+    LIMIT $4
   `;
-  const { rows } = await pool.query(query, [managerId, departmentId || null]);
+  const { rows } = await pool.query(query, [
+    managerId,
+    departmentId || null,
+    MAX_HIERARCHY_DEPTH,
+    MAX_HIERARCHY_ROWS + 1,
+  ]);
+  if (rows.length > MAX_HIERARCHY_ROWS) {
+    const err = new Error('Team too large');
+    err.statusCode = 416;
+    throw err;
+  }
   return rows;
 }
 
@@ -160,8 +175,8 @@ async function createMember(data) {
   } = await pool.query(
     `INSERT INTO users
        (email, password_hash, role, manager_id, department_id, full_name,
-        phone, college, course, year_of_study, position, joining_date, internship_status, location, notes)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+        phone, college, course, year_of_study, position, internship_domain, joining_date, internship_status, location, notes)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
      RETURNING id`,
     [
       normalizedEmail,
@@ -175,6 +190,7 @@ async function createMember(data) {
       data.course || null,
       data.year_of_study || null,
       data.position || null,
+      data.internship_domain || null,
       data.joining_date || null,
       data.internship_status || 'ACTIVE',
       data.location || null,
@@ -228,14 +244,22 @@ async function getPendingProofs(managerId, limit = 50) {
       SELECT id, role, department_id FROM users
       WHERE id = $1 AND deleted_at IS NULL
     ), team AS (
-      SELECT u.id FROM users u CROSS JOIN requester r
-      WHERE u.deleted_at IS NULL AND u.role <> 'ADMIN' AND u.id <> r.id
-        AND ((r.role = 'SENIOR_TL' AND u.department_id = r.department_id)
-          OR (r.role <> 'SENIOR_TL' AND u.manager_id = r.id))
+      SELECT u.id, u.manager_id, 1 AS depth, ARRAY[r.id, u.id] AS path
+      FROM requester r
+      INNER JOIN users u
+        ON u.deleted_at IS NULL
+       AND u.role <> 'ADMIN'
+       AND u.id <> r.id
+       AND u.manager_id = r.id
       UNION ALL
-      SELECT u.id FROM users u INNER JOIN team t ON u.manager_id = t.id
-      CROSS JOIN requester r
-      WHERE u.deleted_at IS NULL AND r.role <> 'SENIOR_TL'
+      SELECT u.id, u.manager_id, t.depth + 1, t.path || u.id
+      FROM team t
+      INNER JOIN users u
+        ON u.manager_id = t.id
+       AND u.deleted_at IS NULL
+       AND u.role <> 'ADMIN'
+       AND NOT u.id = ANY(t.path)
+      WHERE t.depth < $3
     )
     SELECT p.id, p.intern_id, p.image_path, p.status, p.created_at,
            u.full_name AS intern_name, u.email AS intern_email,
@@ -248,11 +272,13 @@ async function getPendingProofs(managerId, limit = 50) {
     ORDER BY p.created_at DESC
     LIMIT $2
   `;
-  const { rows } = await pool.query(query, [managerId, limit]);
+  const { rows } = await pool.query(query, [
+    managerId,
+    limit,
+    MAX_HIERARCHY_DEPTH,
+  ]);
   return rows;
 }
-
-const { ROLE_RANK } = require('../../utils/hierarchy');
 
 async function setMemberStatus(id, suspended) {
   await pool.query(
@@ -340,14 +366,20 @@ async function updateMemberManager(id, managerId) {
 
     const cycleCheck = await client.query(
       `WITH RECURSIVE subordinates AS (
-         SELECT id FROM users WHERE manager_id = $1 AND deleted_at IS NULL
+         SELECT u.id, u.manager_id, 1 AS depth, ARRAY[$1::uuid, u.id] AS path
+         FROM users u
+         WHERE u.manager_id = $1 AND u.deleted_at IS NULL
          UNION ALL
-         SELECT u.id
-         FROM users u INNER JOIN subordinates s ON u.manager_id = s.id
-         WHERE u.deleted_at IS NULL
+         SELECT u.id, u.manager_id, s.depth + 1, s.path || u.id
+         FROM subordinates s
+         INNER JOIN users u
+           ON u.manager_id = s.id
+          AND u.deleted_at IS NULL
+          AND NOT u.id = ANY(s.path)
+         WHERE s.depth < $3
        )
-       SELECT 1 FROM subordinates WHERE id = $2`,
-      [id, managerId]
+       SELECT 1 FROM subordinates WHERE id = $2 LIMIT 1`,
+      [id, managerId, MAX_HIERARCHY_DEPTH]
     );
     if (cycleCheck.rowCount > 0) {
       throw new Error('That assignment would create a cycle');

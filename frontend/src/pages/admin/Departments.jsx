@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { getApiErrorMessage } from '../../lib/apiError';
 import {
   Building2,
   Plus,
@@ -24,6 +25,7 @@ import {
   Spinner,
   PageHeader,
 } from '../../components/ui';
+import { useRouteInitialLoading } from '../../components/loading/RouteInitialLoading';
 
 export default function Departments() {
   const hydrated = useAuthStore((s) => s.hydrated);
@@ -53,6 +55,7 @@ export default function Departments() {
     queryFn: () => api.get('/departments').then((r) => r.data),
     enabled: hydrated && !!accessToken,
   });
+  useRouteInitialLoading(isLoading && isAdmin && departments.length === 0);
 
   useEffect(() => {
     if (isAdmin || isLoading || isError) return;
@@ -81,7 +84,7 @@ export default function Departments() {
       }
     },
     onError: (err) =>
-      setError(err.response?.data?.error || 'Failed to create department'),
+      setError(getApiErrorMessage(err, 'Failed to create department')),
   });
 
   const deleteMut = useMutation({
@@ -225,10 +228,6 @@ export default function Departments() {
           <Btn className="mt-4" onClick={() => refetch()}>
             Retry
           </Btn>
-        </div>
-      ) : isLoading ? (
-        <div className="flex justify-center p-8">
-          <Spinner />
         </div>
       ) : departments.length === 0 ? (
         <EmptyState
