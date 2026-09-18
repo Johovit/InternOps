@@ -118,7 +118,7 @@ function NoticeForm({
   const [title, setTitle] = useState(initial.title ?? '');
   const [content, setContent] = useState(initial.content ?? '');
   const [category, setCategory] = useState(initial.category ?? 'GENERAL');
-  const [image_url, setImageUrl] = useState(initial.image_url ?? '');
+  const [imageUrl, setImageUrl] = useState(initial.image_url ?? '');
   const [action_button_text, setActionButtonText] = useState(
     initial.action_button_text ?? ''
   );
@@ -191,9 +191,9 @@ function NoticeForm({
       )}
 
       <div className="flex items-center gap-4">
-        {image_url && (
+        {imageUrl && (
           <img
-            src={image_url}
+            src={imageUrl}
             alt="Notice Preview"
             className="h-16 w-32 object-cover rounded-lg border border-slate-200 dark:border-slate-700"
           />
@@ -205,7 +205,7 @@ function NoticeForm({
             <Upload className="w-4 h-4 text-slate-500" />
           )}
           <span className="text-sm text-slate-600 dark:text-slate-400">
-            {image_url ? 'Change Image' : 'Upload Image (Optional)'}
+            {imageUrl ? 'Change Image' : 'Upload Image (Optional)'}
           </span>
           <input
             type="file"
@@ -215,7 +215,7 @@ function NoticeForm({
             disabled={isPending || isUploading}
           />
         </label>
-        {image_url && (
+        {imageUrl && (
           <button
             type="button"
             onClick={() => setImageUrl('')}
@@ -368,17 +368,20 @@ function NoticeForm({
           disabled={
             isPending || isUploading || !title.trim() || !content.trim()
           }
-          onClick={() =>
-            onSubmit({
+          onClick={() => {
+            const payload = {
               title: title.trim(),
               content: content.trim(),
               category,
-              image_url: image_url || null,
-              action_button_text: action_button_text || null,
-              action_button_link: action_button_link || null,
               is_featured,
-            })
-          }
+            };
+            if (imageUrl) payload.image_url = imageUrl;
+            if (action_button_text)
+              payload.action_button_text = action_button_text;
+            if (action_button_link)
+              payload.action_button_link = action_button_link;
+            onSubmit(payload);
+          }}
           className="rounded-2xl"
         >
           {isPending ? (
@@ -435,6 +438,8 @@ export default function Notices() {
         .get(`/notices?page=${page}&limit=10`)
         .then((r) => r.data || { notices: [], count: 0 }),
   });
+
+  useRouteInitialLoading(isLoading && !noticesData);
 
   const notices = Array.isArray(noticesData)
     ? noticesData
