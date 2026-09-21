@@ -6,6 +6,8 @@ on:
   pull_request:
     branches: [master]
 
+  merge_group:
+    branches: [master]
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -52,7 +54,7 @@ jobs:
         run: npm ci --no-audit --no-fund
 
       - name: Run backend linting
-        run: cd backend && npm run lint
+        run: cd backend && npm run lint && npm run lint:db
 
       - name: Wait for PostgreSQL
         env:
