@@ -1,4 +1,3 @@
--- Migration: 054_task_prerequisites
 -- Migration: 058_task_prerequisites
 -- Adds a junction table that models prerequisite relationships between tasks.
 -- The application layer enforces that this graph remains a DAG (no cycles)
