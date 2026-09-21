@@ -28,14 +28,14 @@ model.predict_one("Support fixed my issue in five minutes!")
 
 `ai-service/data/sentiment/customer_feedback.csv` — 180 labeled examples (`id,text,label,source`).
 
-| | negative | neutral | positive | total |
-| --- | ---: | ---: | ---: | ---: |
-| product_review | 12 | 12 | 12 | 36 |
-| app_store | 12 | 12 | 12 | 36 |
-| support_ticket | 12 | 12 | 12 | 36 |
-| delivery | 12 | 12 | 12 | 36 |
-| restaurant | 12 | 12 | 12 | 36 |
-| **total** | **60** | **60** | **60** | **180** |
+|                | negative | neutral | positive |   total |
+| -------------- | -------: | ------: | -------: | ------: |
+| product_review |       12 |      12 |       12 |      36 |
+| app_store      |       12 |      12 |       12 |      36 |
+| support_ticket |       12 |      12 |       12 |      36 |
+| delivery       |       12 |      12 |       12 |      36 |
+| restaurant     |       12 |      12 |       12 |      36 |
+| **total**      |   **60** |  **60** |   **60** | **180** |
 
 **Provenance.** The sample was written by hand for this task, modelled on common patterns in
 product reviews, app-store reviews, support tickets, delivery feedback and restaurant reviews. It
@@ -81,24 +81,24 @@ cross-validation over all 180 examples. Full numbers are recorded in
 
 **Hold-out (36 examples)**
 
-| Model | Accuracy | Macro-F1 |
-| --- | ---: | ---: |
-| Majority-class baseline | 0.333 | 0.167 |
+| Model                        |  Accuracy |  Macro-F1 |
+| ---------------------------- | --------: | --------: |
+| Majority-class baseline      |     0.333 |     0.167 |
 | TF-IDF + logistic regression | **0.694** | **0.691** |
 
-| Class | Precision | Recall | F1 | Support |
-| --- | ---: | ---: | ---: | ---: |
-| negative | 0.579 | 0.917 | 0.710 | 12 |
-| neutral | 0.889 | 0.667 | 0.762 | 12 |
-| positive | 0.750 | 0.500 | 0.600 | 12 |
+| Class    | Precision | Recall |    F1 | Support |
+| -------- | --------: | -----: | ----: | ------: |
+| negative |     0.579 |  0.917 | 0.710 |      12 |
+| neutral  |     0.889 |  0.667 | 0.762 |      12 |
+| positive |     0.750 |  0.500 | 0.600 |      12 |
 
 Confusion matrix (rows = true label, columns = predicted):
 
-| | negative | neutral | positive |
-| --- | ---: | ---: | ---: |
-| **negative** | 11 | 0 | 1 |
-| **neutral** | 3 | 8 | 1 |
-| **positive** | 5 | 1 | 6 |
+|              | negative | neutral | positive |
+| ------------ | -------: | ------: | -------: |
+| **negative** |       11 |       0 |        1 |
+| **neutral**  |        3 |       8 |        1 |
+| **positive** |        5 |       1 |        6 |
 
 **5-fold cross-validation:** accuracy 0.689 ± 0.067, macro-F1 0.687 ± 0.067 (folds range from 0.58
 to 0.75).
@@ -107,7 +107,7 @@ to 0.75).
 
 - The baseline is far above the majority-class macro-F1 (0.69 vs 0.17), so the pipeline learns real
   signal even from 144 training examples.
-- The largest error is *positive → negative* (5 of 12 test positives; 6 of 12 positives are
+- The largest error is _positive → negative_ (5 of 12 test positives; 6 of 12 positives are
   misclassified in total). Half of those 6 use a negation word positively ("without getting
   fidgety", "Nothing was damaged", "No complaints at all"), which a model trained on 144 examples
   cannot learn to treat as praise.
