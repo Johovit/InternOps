@@ -1397,7 +1397,9 @@ export default function Tasks({
           {totalPages > 1 && (
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-8 pt-4 border-t border-slate-200 dark:border-slate-800">
               <span className="text-sm font-semibold text-slate-500 dark:text-slate-400">
-                Showing {(safePage - 1) * ITEMS_PER_PAGE + 1} to {Math.min(safePage * ITEMS_PER_PAGE, totalTasks)} of {totalTasks} tasks
+                Showing {(safePage - 1) * ITEMS_PER_PAGE + 1} to{' '}
+                {Math.min(safePage * ITEMS_PER_PAGE, totalTasks)} of{' '}
+                {totalTasks} tasks
               </span>
               <div className="flex items-center gap-2">
                 <button
