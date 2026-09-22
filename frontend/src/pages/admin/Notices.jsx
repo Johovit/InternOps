@@ -14,6 +14,13 @@ import {
   Clock,
   AlertTriangle,
   Newspaper,
+  Upload,
+  Link as LinkIcon,
+  Star,
+  Briefcase,
+  CalendarDays,
+  FileWarning,
+  Sparkles,
 } from 'lucide-react';
 import api from '../../lib/axios';
 import useAuthStore from '../../store/auth';
@@ -27,7 +34,17 @@ import {
 } from '../../components/ui';
 import CustomSelect from '../../components/CustomSelect';
 
-const CATEGORIES = ['GENERAL', 'REMINDER', 'ALERT', 'NEWS'];
+const CATEGORIES = [
+  'GENERAL',
+  'REMINDER',
+  'ALERT',
+  'NEWS',
+  'INTERNSHIP',
+  'ANNOUNCEMENT',
+  'EVENT',
+  'IMPORTANT',
+  'DEADLINE',
+];
 
 const CATEGORY_STYLES = {
   GENERAL:
@@ -37,6 +54,16 @@ const CATEGORY_STYLES = {
   ALERT:
     'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-100 dark:border-rose-900/60',
   NEWS: 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-100 dark:border-emerald-900/60',
+  INTERNSHIP:
+    'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border-purple-100 dark:border-purple-900/60',
+  ANNOUNCEMENT:
+    'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-100 dark:border-blue-900/60',
+  EVENT:
+    'bg-fuchsia-50 dark:bg-fuchsia-950/40 text-fuchsia-700 dark:text-fuchsia-300 border-fuchsia-100 dark:border-fuchsia-900/60',
+  IMPORTANT:
+    'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border-red-100 dark:border-red-900/60',
+  DEADLINE:
+    'bg-orange-50 dark:bg-orange-950/40 text-orange-700 dark:text-orange-300 border-orange-100 dark:border-orange-900/60',
 };
 
 const CATEGORY_META = {
@@ -44,6 +71,19 @@ const CATEGORY_META = {
   REMINDER: { Icon: Clock, color: 'text-amber-500', label: 'Reminder' },
   ALERT: { Icon: AlertTriangle, color: 'text-rose-500', label: 'Alert' },
   NEWS: { Icon: Newspaper, color: 'text-emerald-500', label: 'News' },
+  INTERNSHIP: {
+    Icon: Briefcase,
+    color: 'text-purple-500',
+    label: 'Internship',
+  },
+  ANNOUNCEMENT: {
+    Icon: Megaphone,
+    color: 'text-blue-500',
+    label: 'Announcement',
+  },
+  EVENT: { Icon: CalendarDays, color: 'text-fuchsia-500', label: 'Event' },
+  IMPORTANT: { Icon: FileWarning, color: 'text-red-500', label: 'Important' },
+  DEADLINE: { Icon: Clock, color: 'text-orange-500', label: 'Deadline' },
 };
 
 const CATEGORY_OPTIONS = CATEGORIES.map((category) => ({
@@ -78,9 +118,114 @@ function NoticeForm({
   const [title, setTitle] = useState(initial.title ?? '');
   const [content, setContent] = useState(initial.content ?? '');
   const [category, setCategory] = useState(initial.category ?? 'GENERAL');
+  const [imageUrl, setImageUrl] = useState(initial.image_url ?? '');
+  const [action_button_text, setActionButtonText] = useState(
+    initial.action_button_text ?? ''
+  );
+  const [action_button_link, setActionButtonLink] = useState(
+    initial.action_button_link ?? ''
+  );
+  const [is_featured, setIsFeatured] = useState(initial.is_featured ?? false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+  const [isAiLoading, setIsAiLoading] = useState(false);
+  const [aiAnalysis, setAiAnalysis] = useState(null);
+
+  const handleAiAnalyze = async () => {
+    if (!content.trim()) return;
+    setIsAiLoading(true);
+    setUploadError('');
+    try {
+      const res = await api.post('/notices/ai-analyze', {
+        content: content.trim(),
+      });
+      const data = res.data.data;
+      if (data.title && !title) setTitle(data.title);
+      if (data.category) setCategory(data.category);
+      if (data.action_button_text && !action_button_text)
+        setActionButtonText(data.action_button_text);
+      setAiAnalysis(data);
+    } catch (err) {
+      setUploadError(
+        err.response?.data?.error ||
+          err.message ||
+          'Failed to analyze notice with AI'
+      );
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
+  const handleImageUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      setUploadError('Image size must be less than 5MB');
+      return;
+    }
+
+    setIsUploading(true);
+    setUploadError('');
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const res = await api.post('/uploads/notice-image', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      setImageUrl(res.data.image_url);
+    } catch (err) {
+      setUploadError(err.response?.data?.error || 'Failed to upload image');
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   return (
     <div className="flex flex-col gap-3">
+      {uploadError && (
+        <div className="text-sm text-red-500 p-2 bg-red-50 rounded-lg">
+          {uploadError}
+        </div>
+      )}
+
+      <div className="flex items-center gap-4">
+        {imageUrl && (
+          <img
+            src={imageUrl}
+            alt="Notice Preview"
+            className="h-16 w-32 object-cover rounded-lg border border-slate-200 dark:border-slate-700"
+          />
+        )}
+        <label className="flex items-center gap-2 px-3 py-2 border border-dashed border-slate-300 dark:border-slate-600 rounded-lg cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+          {isUploading ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <Upload className="w-4 h-4 text-slate-500" />
+          )}
+          <span className="text-sm text-slate-600 dark:text-slate-400">
+            {imageUrl ? 'Change Image' : 'Upload Image (Optional)'}
+          </span>
+          <input
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handleImageUpload}
+            disabled={isPending || isUploading}
+          />
+        </label>
+        {imageUrl && (
+          <button
+            type="button"
+            onClick={() => setImageUrl('')}
+            className="text-rose-500 text-sm hover:underline"
+          >
+            Remove
+          </button>
+        )}
+      </div>
+
       <Input
         placeholder="Notice title"
         value={title}
@@ -92,10 +237,120 @@ function NoticeForm({
         placeholder="Notice content…"
         value={content}
         onChange={(e) => setContent(e.target.value)}
-        rows={3}
-        disabled={isPending}
-        className="w-full rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3 text-sm text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400/50 resize-none transition disabled:opacity-60 disabled:cursor-not-allowed"
+        disabled={isPending || isAiLoading}
+        className="w-full rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-700/80 px-4 py-3 text-sm text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400/50 resize-none transition disabled:opacity-60 disabled:cursor-not-allowed"
       />
+
+      <div className="flex justify-end -mt-1 mb-2">
+        <button
+          type="button"
+          disabled={!content.trim() || isAiLoading || isPending}
+          onClick={handleAiAnalyze}
+          className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-400 dark:hover:bg-indigo-900/50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {isAiLoading ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          ) : (
+            <Sparkles className="w-3.5 h-3.5" />
+          )}
+          AI Assistant
+        </button>
+      </div>
+
+      {aiAnalysis && (
+        <div className="bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/50 rounded-xl p-4 text-sm mb-2 relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-1 h-full bg-indigo-400 dark:bg-indigo-600"></div>
+          <h4 className="font-semibold text-indigo-900 dark:text-indigo-300 flex items-center gap-1.5 mb-2">
+            <Sparkles className="w-4 h-4 text-indigo-500" /> AI Insights
+          </h4>
+          <p className="text-slate-700 dark:text-slate-300 mb-3 leading-relaxed">
+            <strong>Summary:</strong> {aiAnalysis.summary}
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 mb-4">
+            {aiAnalysis.deadline && (
+              <div className="text-slate-600 dark:text-slate-400">
+                <strong className="text-slate-700 dark:text-slate-300">
+                  Deadline:
+                </strong>{' '}
+                {aiAnalysis.deadline}
+              </div>
+            )}
+            {aiAnalysis.date_time && (
+              <div className="text-slate-600 dark:text-slate-400">
+                <strong className="text-slate-700 dark:text-slate-300">
+                  Date/Time:
+                </strong>{' '}
+                {aiAnalysis.date_time}
+              </div>
+            )}
+            {aiAnalysis.eligibility && (
+              <div className="text-slate-600 dark:text-slate-400 col-span-full">
+                <strong className="text-slate-700 dark:text-slate-300">
+                  Eligibility:
+                </strong>{' '}
+                {aiAnalysis.eligibility}
+              </div>
+            )}
+          </div>
+          {aiAnalysis.improved_content && (
+            <div className="border-t border-indigo-100 dark:border-indigo-900/50 pt-3 flex flex-col gap-2">
+              <p className="text-xs text-indigo-700 dark:text-indigo-400 font-medium uppercase tracking-wide">
+                Suggested Content Revision
+              </p>
+              <p className="text-slate-600 dark:text-slate-400 italic bg-white/50 dark:bg-black/20 p-2 rounded-lg border border-indigo-50 dark:border-indigo-900/30 whitespace-pre-wrap">
+                {aiAnalysis.improved_content}
+              </p>
+              <button
+                type="button"
+                onClick={() => setContent(aiAnalysis.improved_content)}
+                className="self-start mt-1 text-xs font-semibold px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded shadow-sm transition-colors"
+              >
+                Use Suggested Content
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="min-w-0">
+          <Input
+            placeholder="Action Button Text (e.g. Apply Now)"
+            value={action_button_text}
+            onChange={(e) => setActionButtonText(e.target.value)}
+            disabled={isPending}
+            className="h-[52px] min-w-0 rounded-2xl text-sm dark:!border-slate-700 dark:!bg-slate-800/70"
+          />
+        </div>
+        <div className="relative min-w-0">
+          <LinkIcon className="pointer-events-none absolute left-4 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input
+            type="url"
+            placeholder="Action Button Link (https://...)"
+            value={action_button_link}
+            onChange={(e) => setActionButtonLink(e.target.value)}
+            disabled={isPending}
+            className="h-[52px] w-full min-w-0 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/70 pl-11 pr-4 text-sm text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400/50 transition disabled:opacity-60 disabled:cursor-not-allowed"
+          />
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2 ml-1 mb-2">
+        <input
+          type="checkbox"
+          id="is_featured"
+          checked={is_featured}
+          onChange={(e) => setIsFeatured(e.target.checked)}
+          className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
+        />
+        <label
+          htmlFor="is_featured"
+          className="text-sm font-medium text-slate-700 dark:text-slate-300 flex items-center gap-1"
+        >
+          Mark as Featured{' '}
+          <Star className="w-3 h-3 text-amber-500 fill-amber-500" />
+        </label>
+      </div>
 
       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
         <div className="w-full sm:w-64">
@@ -110,10 +365,23 @@ function NoticeForm({
         </div>
 
         <Btn
-          disabled={isPending || !title.trim() || !content.trim()}
-          onClick={() =>
-            onSubmit({ title: title.trim(), content: content.trim(), category })
+          disabled={
+            isPending || isUploading || !title.trim() || !content.trim()
           }
+          onClick={() => {
+            const payload = {
+              title: title.trim(),
+              content: content.trim(),
+              category,
+              is_featured,
+            };
+            if (imageUrl) payload.image_url = imageUrl;
+            if (action_button_text)
+              payload.action_button_text = action_button_text;
+            if (action_button_link)
+              payload.action_button_link = action_button_link;
+            onSubmit(payload);
+          }}
           className="rounded-2xl"
         >
           {isPending ? (
@@ -141,6 +409,8 @@ function NoticeForm({
 }
 
 export default function Notices() {
+  const hydrated = useAuthStore((s) => s.hydrated);
+  const accessToken = useAuthStore((s) => s.accessToken);
   const user = useAuthStore((s) => s.user);
   const isAdmin = user?.role === 'ADMIN';
   const queryClient = useQueryClient();
@@ -153,15 +423,29 @@ export default function Notices() {
   const [editingId, setEditingId] = useState(null);
   const [noticeToDelete, setNoticeToDelete] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
+  const [page, setPage] = useState(1);
 
-  const { data: notices = [], isLoading } = useQuery({
-    queryKey: ['notices-admin'],
-    // Defensive: always resolve to an array, even if the backend ever sends
-    // back an error object (e.g. { error, notices: [] }) instead of a bare
-    // array — prevents "notices.map is not a function" crashes.
+  const {
+    data: noticesData,
+    isLoading,
+    isError,
+    error: queryError,
+    refetch,
+  } = useQuery({
+    queryKey: ['notices-admin', page],
     queryFn: () =>
-      api.get('/notices').then((r) => (Array.isArray(r.data) ? r.data : [])),
+      api
+        .get(`/notices?page=${page}&limit=10`)
+        .then((r) => r.data || { notices: [], count: 0 }),
   });
+
+  useRouteInitialLoading(isLoading && !noticesData);
+
+  const notices = Array.isArray(noticesData)
+    ? noticesData
+    : noticesData?.data || [];
+  // Backend se humein list mil rahi hai, toh array length se total items calculate kar lete hain
+  const totalNotices = noticesData?.total || notices.length || 0;
 
   const createMut = useMutation({
     mutationFn: (body) => api.post('/notices', body),
@@ -172,27 +456,49 @@ export default function Notices() {
     },
     onError: (err) =>
       setFormError(err.response?.data?.error || 'Failed to create notice'),
+    enabled: hydrated && !!accessToken,
   });
 
   const updateMut = useMutation({
     mutationFn: ({ id, ...body }) => api.patch(`/notices/${id}`, body),
+
     onSuccess: () => {
       setEditingId(null);
+      setFormError('');
       inv();
+    },
+
+    onError: (err) => {
+      setFormError(
+        err.response?.data?.error ||
+          err.response?.data?.message ||
+          'Failed to update notice'
+      );
     },
   });
 
   const deleteMut = useMutation({
     mutationFn: (id) => api.delete(`/notices/${id}`),
+
     onSuccess: () => {
+      setFormError('');
       inv();
       setNoticeToDelete(null);
     },
+
+    onError: (err) => {
+      setFormError(
+        err.response?.data?.error ||
+          err.response?.data?.message ||
+          'Failed to delete notice'
+      );
+    },
+
     onSettled: () => setDeletingId(null),
   });
 
   return (
-    <div className="animate-fade-in-up">
+    <div className="">
       <ConfirmationModal
         open={!!noticeToDelete}
         title="Delete Notice"
@@ -241,9 +547,26 @@ export default function Notices() {
         />
       </Card>
 
-      {isLoading ? (
-        <div className="flex justify-center p-8">
-          <Spinner />
+      {isError ? (
+        <Card className="p-6">
+          <div className="text-center">
+            <h3 className="text-lg font-semibold text-red-600">
+              Failed to load notices
+            </h3>
+
+            <Btn className="mt-4" onClick={() => refetch()}>
+              Retry
+            </Btn>
+          </div>
+        </Card>
+      ) : isLoading ? (
+        <div className="flex flex-col gap-3">
+          {[1, 2, 3].map((i) => (
+            <div
+              key={i}
+              className="h-32 bg-slate-100 dark:bg-slate-800 rounded-xl animate-pulse"
+            />
+          ))}
         </div>
       ) : notices.length === 0 ? (
         <EmptyState
@@ -269,11 +592,25 @@ export default function Notices() {
                   submitLabel="Save Changes"
                 />
               ) : (
-                <div className="flex items-start gap-4">
-                  <CategoryBadge category={n.category} />
+                <div className="flex flex-col sm:flex-row items-start gap-4">
+                  {n.image_url && (
+                    <img
+                      src={n.image_url}
+                      alt={n.title}
+                      className="w-full sm:w-32 h-32 sm:h-20 object-cover rounded-xl shrink-0 border border-slate-200 dark:border-slate-700"
+                    />
+                  )}
+                  <div className="flex-1 min-w-0 flex flex-col gap-1 w-full">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <CategoryBadge category={n.category} />
+                      {n.is_featured && (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 border border-amber-200 dark:border-amber-900/60 uppercase tracking-wide">
+                          <Star className="w-3 h-3 fill-amber-500" /> Featured
+                        </span>
+                      )}
+                    </div>
 
-                  <div className="flex-1 min-w-0">
-                    <p className="font-bold text-slate-900 dark:text-white">
+                    <p className="font-bold text-slate-900 dark:text-white text-lg mt-1">
                       {n.title}
                     </p>
 
@@ -324,6 +661,27 @@ export default function Notices() {
               )}
             </Card>
           ))}
+
+          {/* Pagination Buttons */}
+          <div className="flex items-center justify-between pt-4 mt-2 border-t border-slate-200 dark:border-slate-700">
+            <button
+              onClick={() => setPage((p) => p - 1)}
+              disabled={page === 1}
+              className="px-4 py-2 text-sm font-medium bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              Previous
+            </button>
+            <span className="text-sm font-medium text-slate-500 dark:text-slate-400">
+              Page {page} of {Math.max(1, Math.ceil(totalNotices / 10))}
+            </span>
+            <button
+              onClick={() => setPage((p) => p + 1)}
+              disabled={notices.length < 10}
+              className="px-4 py-2 text-sm font-medium bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              Next
+            </button>
+          </div>
         </div>
       )}
     </div>
