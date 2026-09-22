@@ -8,7 +8,6 @@
 const alertRepo = require('./alert.repository');
 const notificationsRepo = require('../notifications/repository');
 const auditRepo = require('../audit/repository');
-const pool = require('../../config/db');
 
 // ---------------------------------------------------------------------------
 // Alert type definitions
@@ -190,20 +189,6 @@ function evaluateAutoResolution(riskRecord) {
 }
 
 // ---------------------------------------------------------------------------
-// Get the intern's manager (for notification target)
-// ---------------------------------------------------------------------------
-async function getInternManager(internId) {
-  const res = await pool.query(
-    `SELECT u.manager_id, m.full_name AS manager_name, m.id AS manager_id_val
-     FROM users u
-     LEFT JOIN users m ON m.id = u.manager_id AND m.deleted_at IS NULL
-     WHERE u.id = $1 AND u.deleted_at IS NULL`,
-    [internId]
-  );
-  return res.rows[0] || null;
-}
-
-// ---------------------------------------------------------------------------
 // Main: process risk record → generate/update/resolve alerts + notifications
 // ---------------------------------------------------------------------------
 async function processRiskAlerts(riskRecord, rawFeatures = {}, rawData = {}) {
@@ -231,7 +216,7 @@ async function processRiskAlerts(riskRecord, rawFeatures = {}, rawData = {}) {
     );
 
     // 3. Upsert each alert (deduplication built into alertRepo)
-    const internManager = await getInternManager(internId);
+    const internManager = await alertRepo.getInternManager(internId);
 
     for (const alertDef of alertConditions) {
       try {

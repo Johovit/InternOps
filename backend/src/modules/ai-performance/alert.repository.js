@@ -423,6 +423,20 @@ async function getActiveAlertSummary(requestingUserId, requestingUserRole) {
   return res.rows[0];
 }
 
+// ---------------------------------------------------------------------------
+// Get the intern's manager (for notification target)
+// ---------------------------------------------------------------------------
+async function getInternManager(internId) {
+  const res = await pool.query(
+    `SELECT u.manager_id, m.full_name AS manager_name, m.id AS manager_id_val
+     FROM users u
+     LEFT JOIN users m ON m.id = u.manager_id AND m.deleted_at IS NULL
+     WHERE u.id = $1 AND u.deleted_at IS NULL`,
+    [internId]
+  );
+  return res.rows[0] || null;
+}
+
 module.exports = {
   upsertAlert,
   autoResolveAlerts,
@@ -431,4 +445,5 @@ module.exports = {
   listAlerts,
   getAlertById,
   getActiveAlertSummary,
+  getInternManager,
 };
