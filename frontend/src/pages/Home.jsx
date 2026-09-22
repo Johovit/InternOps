@@ -5,13 +5,26 @@ import api from '../lib/axios';
 import useAuthStore from '../store/auth';
 import { QUERY_KEYS } from '../constants/queryKeys';
 import { Card, StatCard, ApiErrorState } from '../components/ui';
+import { useRouteInitialLoading } from '../components/loading/RouteInitialLoading';
+import { getTeamRoleBreakdown } from '../utils/teamRoleBreakdown';
+import {
+  AlertTriangle,
+  BarChart3,
+  CalendarDays,
+  CircleCheck,
+  Star,
+  Target,
+  UserRound,
+  Users,
+  Zap,
+} from 'lucide-react';
 
 function attendancePct(m) {
-  const total = Number(m.attendance_total) || 0;
-  if (!total) return null;
-
-  const score = Number(m.present_count) + Number(m.half_day_count) * 0.5;
-  return Math.round((score / total) * 100);
+  const total = Number(m.attendance_total);
+  const present = Number(m.present_count);
+  if (!Number.isFinite(total) || total <= 0) return null;
+  if (!Number.isFinite(present) || present < 0) return 0;
+  return Math.max(0, Math.min(100, Math.round((present / total) * 100)));
 }
 
 function QuickAction({ to, icon, label, tint, description }) {
@@ -20,7 +33,7 @@ function QuickAction({ to, icon, label, tint, description }) {
       to={to}
       className={`group flex items-center gap-3 p-4 rounded-2xl text-sm font-bold transition-all hover:-translate-y-0.5 hover:shadow-md ${tint}`}
     >
-      <span className="w-10 h-10 rounded-2xl bg-white/70 dark:bg-slate-900/40 flex items-center justify-center text-xl shadow-sm">
+      <span className="w-10 h-10 rounded-2xl bg-white/70 dark:bg-slate-900/40 flex items-center justify-center shadow-sm">
         {icon}
       </span>
 
@@ -37,6 +50,9 @@ function QuickAction({ to, icon, label, tint, description }) {
 }
 
 function ManagerHome({ user }) {
+  const accessToken = useAuthStore((s) => s.accessToken);
+  const hydrated = useAuthStore((s) => s.hydrated);
+
   const {
     data: team = [],
     isLoading,
@@ -46,13 +62,10 @@ function ManagerHome({ user }) {
   } = useQuery({
     queryKey: QUERY_KEYS.TEAM_MEMBERS,
     queryFn: () => api.get('/team/members').then((res) => res.data),
+    enabled: hydrated && !!accessToken,
   });
 
-  if (isLoading) {
-    return (
-      <p className="text-slate-600 dark:text-slate-300">Loading dashboard...</p>
-    );
-  }
+  useRouteInitialLoading(!hydrated || !accessToken || isLoading);
 
   if (isError) {
     return (
@@ -68,12 +81,28 @@ function ManagerHome({ user }) {
   const active = team.filter(
     (m) => !m.suspended && (m.internship_status || 'ACTIVE') === 'ACTIVE'
   ).length;
+  const seniorTlCount = team.filter(
+    (member) => member.role === 'SENIOR_TL'
+  ).length;
 
-  const pcts = team.map(attendancePct).filter((p) => p !== null);
+  const tlCount = team.filter((member) => member.role === 'TL').length;
 
-  const avgAtt = pcts.length
-    ? Math.round(pcts.reduce((a, b) => a + b, 0) / pcts.length)
+  const captainCount = team.filter(
+    (member) => member.role === 'CAPTAIN'
+  ).length;
+
+  const internCount = team.filter((member) => member.role === 'INTERN').length;
+  const isAdmin = user?.role === 'ADMIN';
+  const memberBreakdown = getTeamRoleBreakdown(user?.role, team);
+  const pcts = team
+    .map(attendancePct)
+    .filter((percentage) => Number.isFinite(percentage));
+  const averageAttendance = pcts.length
+    ? Math.round(
+        pcts.reduce((sum, percentage) => sum + percentage, 0) / pcts.length
+      )
     : null;
+  const avgAtt = Number.isFinite(averageAttendance) ? averageAttendance : null;
 
   const ratings = team
     .map((m) => m.avg_rating)
@@ -90,7 +119,7 @@ function ManagerHome({ user }) {
   });
 
   return (
-    <div className="animate-fade-in-up text-slate-900 dark:text-white">
+    <div className="text-slate-900 dark:text-white">
       {/* Welcome Header */}
       <div className="mb-7">
         <p className="text-xs md:text-sm uppercase tracking-[0.22em] text-indigo-600 dark:text-indigo-300 font-extrabold mb-2">
@@ -110,23 +139,51 @@ function ManagerHome({ user }) {
       {/* Summary Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <StatCard
-          label="Team members"
+          label={isAdmin ? 'Total team members' : 'Team members'}
           value={team.length}
-          icon="👥"
+          sub={
+            memberBreakdown.length ? (
+              <span className="block leading-5">
+                {memberBreakdown.map((row, rowIndex) => (
+                  <span
+                    key={row.map(({ role }) => role).join('-')}
+                    className={rowIndex > 0 ? 'block' : 'block'}
+                  >
+                    {row.map(({ role, count, label }, itemIndex) => (
+                      <span
+                        key={role}
+                        className="inline-block whitespace-nowrap"
+                      >
+                        {itemIndex > 0 && (
+                          <span className="mx-2 font-extrabold text-indigo-400 dark:text-indigo-300">
+                            •
+                          </span>
+                        )}
+                        {count} {label}
+                      </span>
+                    ))}
+                  </span>
+                ))}
+              </span>
+            ) : (
+              'No team members'
+            )
+          }
+          icon={<Users className="h-5 w-5" />}
           gradient="from-indigo-500 to-blue-600"
         />
 
         <StatCard
           label="Active"
           value={active}
-          icon="✅"
+          icon={<CircleCheck className="h-5 w-5" />}
           gradient="from-emerald-400 to-teal-500"
         />
 
         <StatCard
           label="Avg attendance"
           value={avgAtt === null ? '—' : `${avgAtt}%`}
-          icon="📅"
+          icon={<CalendarDays className="h-5 w-5" />}
           gradient="from-sky-400 to-blue-500"
         />
 
@@ -134,7 +191,7 @@ function ManagerHome({ user }) {
           label="Avg rating"
           value={avgRating}
           sub="out of 10"
-          icon="⭐"
+          icon={<Star className="h-5 w-5" />}
           gradient="from-amber-400 to-orange-500"
         />
       </div>
@@ -144,8 +201,9 @@ function ManagerHome({ user }) {
         <Card className="p-6 md:p-7 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
           <div className="flex items-start justify-between gap-4 mb-5 pb-4 border-b border-slate-200 dark:border-slate-700">
             <div>
-              <h3 className="font-extrabold text-xl text-slate-900 dark:text-white">
-                Needs attention
+              <h3 className="font-extrabold text-xl text-slate-900 dark:text-white flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 text-rose-500" />
+                <span>Needs attention</span>
               </h3>
               <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
                 Members with attendance below the expected range.
@@ -153,10 +211,10 @@ function ManagerHome({ user }) {
             </div>
 
             <Link
-              to="/team"
+              to="/analytics"
               className="text-indigo-600 dark:text-indigo-400 text-sm font-bold hover:underline shrink-0"
             >
-              View team →
+              View analytics →
             </Link>
           </div>
 
@@ -194,7 +252,7 @@ function ManagerHome({ user }) {
         <Card className="p-6 md:p-7 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
           <div className="mb-5 pb-4 border-b border-slate-200 dark:border-slate-700">
             <h3 className="font-extrabold text-xl text-slate-900 dark:text-white flex items-center gap-2">
-              ⚡ Quick actions
+              <Zap className="h-5 w-5" /> Quick actions
             </h3>
 
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
@@ -205,7 +263,7 @@ function ManagerHome({ user }) {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <QuickAction
               to="/team"
-              icon="👥"
+              icon={<Users className="h-5 w-5" />}
               label="Manage team"
               description="View members"
               tint="bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-900/60"
@@ -213,7 +271,7 @@ function ManagerHome({ user }) {
 
             <QuickAction
               to="/attendance"
-              icon="📅"
+              icon={<CalendarDays className="h-5 w-5" />}
               label="Mark attendance"
               description="Daily records"
               tint="bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-100 dark:border-emerald-900/60"
@@ -221,7 +279,7 @@ function ManagerHome({ user }) {
 
             <QuickAction
               to="/ratings"
-              icon="⭐"
+              icon={<Star className="h-5 w-5" />}
               label="Rate members"
               description="Performance"
               tint="bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-100 dark:border-amber-900/60"
@@ -229,7 +287,7 @@ function ManagerHome({ user }) {
 
             <QuickAction
               to="/tasks"
-              icon="🎯"
+              icon={<Target className="h-5 w-5" />}
               label="Social tasks"
               description="Track tasks"
               tint="bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 border border-violet-100 dark:border-violet-900/60"
@@ -243,6 +301,8 @@ function ManagerHome({ user }) {
 
 function InternHome({ user }) {
   const now = new Date();
+  const accessToken = useAuthStore((s) => s.accessToken);
+  const hydrated = useAuthStore((s) => s.hydrated);
 
   const {
     data: stats,
@@ -275,14 +335,10 @@ function InternHome({ user }) {
 
       return { att, attError, ratings, ratingsError };
     },
-    enabled: !!user,
+    enabled: hydrated && !!accessToken && !!user,
   });
 
-  if (isLoading) {
-    return (
-      <p className="text-slate-600 dark:text-slate-300">Loading dashboard...</p>
-    );
-  }
+  useRouteInitialLoading(!hydrated || !accessToken || isLoading);
 
   if (isError) {
     return (
@@ -312,7 +368,7 @@ function InternHome({ user }) {
     : '—';
 
   return (
-    <div className="animate-fade-in-up text-slate-900 dark:text-white">
+    <div className="text-slate-900 dark:text-white">
       {/* Welcome Header */}
       <div className="mb-7">
         <p className="text-xs md:text-sm uppercase tracking-[0.22em] text-indigo-600 dark:text-indigo-300 font-extrabold mb-2">
@@ -335,7 +391,7 @@ function InternHome({ user }) {
           label="Present this month"
           value={present}
           sub="days"
-          icon="📅"
+          icon={<CalendarDays className="h-5 w-5" />}
           gradient="from-emerald-400 to-teal-500"
         />
 
@@ -343,14 +399,14 @@ function InternHome({ user }) {
           label="My avg rating"
           value={ratings !== null ? avg : '—'}
           sub="out of 10"
-          icon="⭐"
+          icon={<Star className="h-5 w-5" />}
           gradient="from-amber-400 to-orange-500"
         />
 
         <StatCard
           label="Total ratings"
           value={ratings !== null ? ratingsData.length : '—'}
-          icon="📊"
+          icon={<BarChart3 className="h-5 w-5" />}
           gradient="from-indigo-500 to-blue-600"
         />
       </div>
@@ -360,7 +416,7 @@ function InternHome({ user }) {
         <Card className="p-6 md:p-7 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
           <div className="mb-5 pb-4 border-b border-slate-200 dark:border-slate-700">
             <h3 className="font-extrabold text-xl text-slate-900 dark:text-white flex items-center gap-2">
-              📅 This month's attendance
+              <CalendarDays className="h-5 w-5" /> This month's attendance
             </h3>
 
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
@@ -408,7 +464,7 @@ function InternHome({ user }) {
         <Card className="p-6 md:p-7 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
           <div className="mb-5 pb-4 border-b border-slate-200 dark:border-slate-700">
             <h3 className="font-extrabold text-xl text-slate-900 dark:text-white flex items-center gap-2">
-              ⚡ Quick actions
+              <Zap className="h-5 w-5" /> Quick actions
             </h3>
 
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
@@ -419,7 +475,7 @@ function InternHome({ user }) {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <QuickAction
               to="/tasks"
-              icon="🎯"
+              icon={<Target className="h-5 w-5" />}
               label="My tasks"
               description="View assignments"
               tint="bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 border border-violet-100 dark:border-violet-900/60"
@@ -427,7 +483,7 @@ function InternHome({ user }) {
 
             <QuickAction
               to="/attendance"
-              icon="📅"
+              icon={<CalendarDays className="h-5 w-5" />}
               label="My attendance"
               description="Track presence"
               tint="bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-100 dark:border-emerald-900/60"
@@ -435,7 +491,7 @@ function InternHome({ user }) {
 
             <QuickAction
               to="/ratings"
-              icon="⭐"
+              icon={<Star className="h-5 w-5" />}
               label="My ratings"
               description="Performance"
               tint="bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-100 dark:border-amber-900/60"
@@ -443,7 +499,7 @@ function InternHome({ user }) {
 
             <QuickAction
               to="/profile"
-              icon="👤"
+              icon={<UserRound className="h-5 w-5" />}
               label="My profile"
               description="Account details"
               tint="bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-900/60"
@@ -457,25 +513,21 @@ function InternHome({ user }) {
 
 export default function Home() {
   const user = useAuthStore((s) => s.user);
+  const accessToken = useAuthStore((s) => s.accessToken);
+  const hydrated = useAuthStore((s) => s.hydrated);
 
   const {
     data: me,
-    isLoading,
     isError,
     error,
     refetch,
   } = useQuery({
     queryKey: QUERY_KEYS.USER_PROFILE,
     queryFn: () => api.get('/users/me').then((r) => r.data),
+    enabled: hydrated && !!accessToken,
   });
 
-  if (isLoading) {
-    return (
-      <p className="text-slate-600 dark:text-slate-300">Loading profile...</p>
-    );
-  }
-
-  if (isError) {
+  if (isError && !user) {
     return (
       <ApiErrorState
         error={error}
@@ -486,7 +538,11 @@ export default function Home() {
     );
   }
 
-  const u = { ...user, full_name: me?.full_name || user?.full_name };
+  const u = {
+    ...user,
+    ...me,
+    full_name: me?.full_name || user?.full_name || user?.fullName,
+  };
 
   const isManager = ['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN'].includes(
     user?.role

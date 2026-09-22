@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   useQuery,
   useMutation,
   useQueryClient,
   keepPreviousData,
 } from '@tanstack/react-query';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   Search,
   ChevronLeft,
@@ -15,12 +16,14 @@ import {
 } from 'lucide-react';
 import api from '../../lib/axios';
 import { Card, Spinner, EmptyState } from '../../components/ui';
+import { ROLE_LABEL } from '../../constants/roles';
 import UserActionMenu from '../../components/UserActionMenu';
 import CreateUserModal from '../../components/admin/CreateUserModal';
 import EditUserModal from '../../components/admin/EditUserModal';
 import CustomSelect from '../../components/CustomSelect';
 import BulkUserModal from '../../components/admin/BulkUserModal';
-
+import WorkbookImportModal from '../../components/admin/WorkbookImportModal';
+import { useRouteInitialLoading } from '../../components/loading/RouteInitialLoading';
 const ROLE_COLOR = {
   ADMIN:
     'bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 border border-violet-100 dark:border-violet-900/60',
@@ -74,6 +77,7 @@ function initials(u) {
 
 export default function AdminDashboard() {
   const queryClient = useQueryClient();
+  const parentRef = useRef(null);
 
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
@@ -84,8 +88,8 @@ export default function AdminDashboard() {
   const [createUserOpen, setCreateUserOpen] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
   const [bulkUserOpen, setBulkUserOpen] = useState(false);
-
-  const limit = 10;
+  const [workbookImportOpen, setWorkbookImportOpen] = useState(false);
+  const limit = 100;
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -127,6 +131,8 @@ export default function AdminDashboard() {
     placeholderData: keepPreviousData,
   });
 
+  const routeInitialLoading = useRouteInitialLoading(isLoading && !data);
+
   const invalidateUsers = () =>
     queryClient.invalidateQueries({ queryKey: ['adminUsers'] });
 
@@ -146,9 +152,30 @@ export default function AdminDashboard() {
     onSettled: () => setDeletingUserId(null),
   });
 
-  const rows = data?.data ?? data?.users ?? data?.items ?? [];
-  const total = data?.total ?? data?.count ?? rows.length;
+  const rows = Array.isArray(data)
+    ? data
+    : Array.isArray(data?.data)
+      ? data.data
+      : Array.isArray(data?.users)
+        ? data.users
+        : Array.isArray(data?.items)
+          ? data.items
+          : [];
+
+  const total = Array.isArray(data)
+    ? data.length
+    : Number(data?.total ?? data?.count ?? rows.length);
+
   const totalPages = Math.max(Math.ceil(total / limit), 1);
+
+  const rowVirtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 82,
+    overscan: 8,
+  });
+
+  const virtualRows = rowVirtualizer.getVirtualItems();
 
   const handleRoleFilterChange = (value) => {
     setRoleFilter(value);
@@ -173,7 +200,7 @@ export default function AdminDashboard() {
 
   return (
     <div className="max-w-7xl mx-auto animate-fade-in-up">
-      {/* Professional Header Block */}
+      {/* Header */}
       <div className="mb-7 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
         <div className="flex items-center gap-4">
           <div className="w-14 h-14 rounded-3xl bg-gradient-to-br from-indigo-600 via-blue-600 to-violet-600 text-white flex items-center justify-center shadow-lg shadow-indigo-200/70 dark:shadow-none">
@@ -202,6 +229,7 @@ export default function AdminDashboard() {
           >
             <span>+ Bulk Add</span>
           </button>
+
           <button
             onClick={() => setCreateUserOpen(true)}
             className="flex items-center gap-2 px-4 py-2 bg-brand-green hover:opacity-90 text-slate-950 font-bold rounded-lg transition text-sm shadow-md"
@@ -239,6 +267,7 @@ export default function AdminDashboard() {
         <div className="flex flex-wrap gap-3 items-center">
           <div className="relative flex-1 min-w-[240px]">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
+
             <input
               type="search"
               placeholder="Search by name or email..."
@@ -265,6 +294,8 @@ export default function AdminDashboard() {
           />
         </div>
       </Card>
+
+      {/* Error Message */}
       {isError && (
         <div className="mb-5 rounded-xl border border-red-200 bg-red-50 dark:bg-red-950/40 dark:border-red-800 px-4 py-3 flex items-center justify-between">
           <div>
@@ -273,6 +304,7 @@ export default function AdminDashboard() {
                 ? "Couldn't refresh the users list."
                 : 'Failed to load users.'}
             </p>
+
             <p className="text-sm text-red-600 dark:text-red-400">
               {error?.response?.data?.message ||
                 error?.message ||
@@ -288,9 +320,10 @@ export default function AdminDashboard() {
           </button>
         </div>
       )}
-      {/* Users Table */}
+
+      {/* Virtualized Users Table */}
       <div className="rounded-3xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 overflow-hidden shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
-        {isLoading ? (
+        {routeInitialLoading ? (
           <Spinner />
         ) : rows.length === 0 ? (
           <EmptyState
@@ -307,99 +340,114 @@ export default function AdminDashboard() {
           />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50 dark:bg-slate-950 text-left text-slate-600 dark:text-slate-300 border-b border-slate-200 dark:border-slate-600">
-                <tr>
-                  <th className="px-6 py-4 font-extrabold whitespace-nowrap">
-                    User
-                  </th>
-                  <th className="px-6 py-4 font-extrabold whitespace-nowrap">
-                    Role
-                  </th>
-                  <th className="px-6 py-4 font-extrabold whitespace-nowrap">
-                    Status
-                  </th>
-                  <th className="px-6 py-4 font-extrabold text-right whitespace-nowrap">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
+            <div className="min-w-[850px] text-sm">
+              {/* Table Header */}
+              <div className="grid grid-cols-[2fr_1fr_1fr_130px] bg-slate-50 dark:bg-slate-950 text-left text-slate-600 dark:text-slate-300 border-b border-slate-200 dark:border-slate-600">
+                <div className="px-6 py-4 font-extrabold">User</div>
+                <div className="px-6 py-4 font-extrabold">Role</div>
+                <div className="px-6 py-4 font-extrabold">Status</div>
+                <div className="px-6 py-4 font-extrabold text-right">
+                  Actions
+                </div>
+              </div>
 
-              <tbody>
-                {rows.map((u, index) => (
-                  <tr
-                    key={u.id}
-                    className={`group transition-colors border-b border-slate-100 dark:border-slate-700 last:border-b-0 ${
-                      index % 2 === 0
-                        ? 'bg-white dark:bg-slate-900'
-                        : 'bg-slate-50/50 dark:bg-slate-800/40'
-                    } hover:bg-indigo-50/50 dark:hover:bg-slate-800`}
-                  >
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-4">
-                        <div
-                          className={`w-11 h-11 rounded-2xl flex items-center justify-center text-xs font-extrabold border ${
-                            AVATAR_COLOR[u.role] || AVATAR_COLOR.INTERN
-                          }`}
-                        >
-                          {initials(u)}
-                        </div>
+              {/* Scrollable Virtualized Rows */}
+              <div ref={parentRef} className="h-[600px] overflow-y-auto">
+                <div
+                  className="relative w-full"
+                  style={{
+                    height: `${rowVirtualizer.getTotalSize()}px`,
+                  }}
+                >
+                  {virtualRows.map((virtualRow) => {
+                    const u = rows[virtualRow.index];
 
-                        <div className="min-w-0">
-                          <div className="font-extrabold text-slate-900 dark:text-white truncate">
-                            {u.full_name || '—'}
+                    return (
+                      <div
+                        key={String(u?.id ?? virtualRow.index)}
+                        className={`absolute left-0 top-0 grid w-full grid-cols-[2fr_1fr_1fr_130px] border-b border-slate-100 dark:border-slate-700 ${
+                          virtualRow.index % 2 === 0
+                            ? 'bg-white dark:bg-slate-900'
+                            : 'bg-slate-50/50 dark:bg-slate-800/40'
+                        } hover:bg-indigo-50/50 dark:hover:bg-slate-800 transition-colors`}
+                        style={{
+                          height: `${virtualRow.size}px`,
+                          transform: `translateY(${virtualRow.start}px)`,
+                        }}
+                      >
+                        {/* User */}
+                        <div className="px-6 py-4 flex items-center gap-4 min-w-0">
+                          <div
+                            className={`w-11 h-11 rounded-2xl flex items-center justify-center text-xs font-extrabold border ${
+                              AVATAR_COLOR[u.role] || AVATAR_COLOR.INTERN
+                            }`}
+                          >
+                            {initials(u)}
                           </div>
 
-                          <div className="text-xs md:text-sm text-slate-500 dark:text-slate-400 truncate">
-                            {u.email}
+                          <div className="min-w-0">
+                            <div className="font-extrabold text-slate-900 dark:text-white truncate">
+                              {u.full_name || '—'}
+                            </div>
+
+                            <div className="text-xs md:text-sm text-slate-500 dark:text-slate-400 truncate">
+                              {u.email}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Role */}
+                        <div className="px-6 py-4 flex items-center">
+                          <span
+                            className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-extrabold ${
+                              ROLE_COLOR[u.role] || ROLE_COLOR.INTERN
+                            }`}
+                          >
+                            {ROLE_LABEL[u.role] || u.role}
+                          </span>
+                        </div>
+
+                        {/* Status */}
+                        <div className="px-6 py-4 flex items-center">
+                          <span
+                            className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-extrabold ${
+                              u.suspended
+                                ? 'bg-red-50 dark:bg-red-950/50 text-red-700 dark:text-red-300 border border-red-100 dark:border-red-800/80'
+                                : 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-100 dark:border-emerald-800/80'
+                            }`}
+                          >
+                            {u.suspended ? 'Suspended' : 'Active'}
+                          </span>
+                        </div>
+
+                        {/* Actions */}
+                        <div className="px-6 py-4 flex items-center justify-end">
+                          <div className="inline-flex text-slate-500 dark:text-slate-400">
+                            <UserActionMenu
+                              user={u}
+                              busy={
+                                deletingUserId === u.id ||
+                                deleteMut.isPending ||
+                                suspendMut.isPending ||
+                                activateMut.isPending
+                              }
+                              onEdit={setEditingUser}
+                              onSuspend={(target) =>
+                                suspendMut.mutate(target.id)
+                              }
+                              onActivate={(target) =>
+                                activateMut.mutate(target.id)
+                              }
+                              onDelete={handleDelete}
+                            />
                           </div>
                         </div>
                       </div>
-                    </td>
-
-                    <td className="px-6 py-4">
-                      <span
-                        className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-extrabold ${
-                          ROLE_COLOR[u.role] || ROLE_COLOR.INTERN
-                        }`}
-                      >
-                        {u.role}
-                      </span>
-                    </td>
-
-                    <td className="px-6 py-4">
-                      <span
-                        className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-extrabold ${
-                          u.suspended
-                            ? 'bg-red-50 dark:bg-red-950/50 text-red-700 dark:text-red-300 border border-red-100 dark:border-red-800/80'
-                            : 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-100 dark:border-emerald-800/80'
-                        }`}
-                      >
-                        {u.suspended ? 'Suspended' : 'Active'}
-                      </span>
-                    </td>
-
-                    <td className="px-6 py-4 text-right">
-                      <div className="inline-flex text-slate-500 dark:text-slate-400 group-hover:text-slate-700 dark:group-hover:text-slate-200 transition">
-                        <UserActionMenu
-                          user={u}
-                          busy={
-                            deletingUserId === u.id ||
-                            deleteMut.isPending ||
-                            suspendMut.isPending ||
-                            activateMut.isPending
-                          }
-                          onEdit={setEditingUser}
-                          onSuspend={(target) => suspendMut.mutate(target.id)}
-                          onActivate={(target) => activateMut.mutate(target.id)}
-                          onDelete={handleDelete}
-                        />
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -435,6 +483,7 @@ export default function AdminDashboard() {
         </div>
       )}
 
+      {/* Modals */}
       <CreateUserModal
         open={createUserOpen}
         onClose={() => setCreateUserOpen(false)}
@@ -449,6 +498,11 @@ export default function AdminDashboard() {
       <BulkUserModal
         open={bulkUserOpen}
         onClose={() => setBulkUserOpen(false)}
+      />
+
+      <WorkbookImportModal
+        open={workbookImportOpen}
+        onClose={() => setWorkbookImportOpen(false)}
       />
     </div>
   );

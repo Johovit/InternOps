@@ -1,4 +1,5 @@
 const pool = require('../../config/db');
+const { assertActivityAllowed } = require('../team/lifecycle');
 
 /**
  * Insert a single proof submission row.
@@ -98,9 +99,56 @@ async function verifyProof(proofId, verifierId, verifierRole) {
 }
 
 /**
+ * Reject a proof submission.  Enforces hierarchy check for non-admins
+ * and prevents self-rejection.
+ */
+async function rejectProof(proofId, verifierId, verifierRole) {
+  const proofRes = await pool.query(
+    'SELECT intern_id FROM proof_submissions WHERE id = $1',
+    [proofId]
+  );
+
+  if (proofRes.rowCount === 0) {
+    throw new Error('Proof not found');
+  }
+
+  if (verifierId === proofRes.rows[0].intern_id) {
+    throw new Error('Forbidden: you cannot reject your own proof submission');
+  }
+
+  if (verifierRole !== 'ADMIN') {
+    const { checkHierarchyAccess } = require('../../utils/hierarchy');
+    const allowed = await checkHierarchyAccess(
+      verifierId,
+      proofRes.rows[0].intern_id
+    );
+    if (!allowed) {
+      throw new Error('Forbidden: not in intern hierarchy');
+    }
+  }
+
+  const res = await pool.query(
+    `UPDATE proof_submissions
+     SET verified_by = $1,
+         verified_at = NOW(),
+         status = 'REJECTED'
+     WHERE id = $2
+     RETURNING *`,
+    [verifierId, proofId]
+  );
+
+  return res.rows[0];
+}
+
+/**
  * Check whether a task is assigned to the given user (or unassigned).
  */
 async function isTaskAssignedToUser(taskId, userId) {
+  await assertActivityAllowed(
+    pool,
+    userId,
+    new Date().toISOString().slice(0, 10)
+  );
   const res = await pool.query(
     `SELECT 1 FROM social_tasks st
      WHERE st.id = $1 AND st.deleted_at IS NULL
@@ -167,6 +215,25 @@ async function getProof(proofId) {
 }
 
 /**
+ * Save the AI verification result for a proof submission.
+ */
+async function saveVerificationResult(proofId, verificationResult) {
+  const res = await pool.query(
+    `UPDATE proof_submissions
+     SET verification_result = $1
+     WHERE id = $2
+     RETURNING *`,
+    [verificationResult, proofId]
+  );
+
+  if (res.rowCount === 0) {
+    throw new Error('Proof not found');
+  }
+
+  return res.rows[0];
+}
+
+/**
  * Soft-delete a proof submission.
  */
 async function deleteProof(proofId) {
@@ -199,10 +266,12 @@ module.exports = {
   submitProof,
   submitProofWithImages,
   verifyProof,
+  rejectProof,
   isTaskAssignedToUser,
   getProofsByTask,
   getProofsByIntern,
   getProof,
+  saveVerificationResult,
   deleteProof,
   getProofImage,
   deleteProofImage,
