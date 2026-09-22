@@ -56,4 +56,69 @@ async def generate_ai_content(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Each message requires a valid role and non-empty content",
                 )
-            #... keep the rest of your function as it was in master
+            messages.append({"role": role, "content": content})
+
+        try:
+            content, provider_name = await ai_orchestrator.generate_chat_with_fallback(messages)
+            return {
+                "status": "success",
+                "provider": provider_name,
+                "content": content,
+                "user_id": current_user.id,
+            }
+        except ProviderRateLimitError:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="AI provider rate limit exceeded",
+            )
+        except ProviderAPIError as error:
+            if error.status_code == 413:
+                raise HTTPException(
+                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    detail="AI provider response too large",
+                )
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="AI service unavailable",
+            )
+        except AIProviderError as e:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=f"AI service unavailable: {str(e)}",
+            )
+
+    prompt = payload.get("prompt") or payload.get("user_input")
+    if not prompt:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Prompt, user_input, or messages is required in payload"
+        )
+
+    try:
+        content, provider_name = await ai_orchestrator.generate_text_with_fallback(prompt)
+        return {
+            "status": "success",
+            "provider": provider_name,
+            "content": content,
+            "user_id": current_user.id,
+        }
+    except ProviderRateLimitError:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="AI provider rate limit exceeded",
+        )
+    except ProviderAPIError as error:
+        if error.status_code == 413:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail="AI provider response too large",
+            )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="AI service unavailable",
+        )
+    except AIProviderError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"AI service unavailable: {str(e)}",
+        )

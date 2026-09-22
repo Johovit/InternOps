@@ -16,7 +16,6 @@ logger = logging.getLogger(__name__)
 
 def generate_cache_key(
     prompt: str,
-    provider_name: str,
     temperature: float,
     kwargs: Optional[Dict[str, Any]] = None,
 ) -> str:
@@ -25,13 +24,12 @@ def generate_cache_key(
     Delegates to app.core.cache.cache_key for consistent key generation.
     """
     kw = kwargs or {}
-    model = kw.get("model", "")
     return cache_key(
-        provider=provider_name,
-        model=model,
+        provider="",
+        model="",
         prompt=prompt,
         temperature=temperature,
-        **{k: v for k, v in kw.items() if k != "model"},
+        **{k: v for k, v in kw.items() if k not in ("model", "provider", "provider_name")},
     )
 
 
@@ -39,6 +37,7 @@ class CircuitBreaker:
     def __init__(self):
         self.failures = 0
         self.disabled_until: Optional[float] = None
+        self.half_open_probe: bool = False
         self._lock = asyncio.Lock()
 
     async def is_open(self) -> bool:
@@ -57,16 +56,23 @@ class CircuitBreaker:
                 if time.time() < self.disabled_until:
                     return False
                 else:
-                    # Cooldown expired, transition to CLOSED/probe state (state mutation)
-                    self.failures = 0
-                    self.disabled_until = None
+                    # Cooldown expired, transition to HALF-OPEN/probe state
+                    if self.half_open_probe:
+                        return False
+                    self.half_open_probe = True
+                    return True
             return True
 
     async def record_failure(self):
         async with self._lock:
+            cooldown_seconds = settings.AI_PROVIDER_COOLDOWN_MS / 1000.0
+            if self.half_open_probe:
+                self.half_open_probe = False
+                self.disabled_until = time.time() + cooldown_seconds
+                return
+
             self.failures += 1
             limit = settings.AI_PROVIDER_FAILURE_LIMIT
-            cooldown_seconds = settings.AI_PROVIDER_COOLDOWN_MS / 1000.0
             if self.failures >= limit:
                 self.disabled_until = time.time() + cooldown_seconds
 
@@ -74,6 +80,7 @@ class CircuitBreaker:
         async with self._lock:
             self.failures = 0
             self.disabled_until = None
+            self.half_open_probe = False
 
 
 # In-memory registry of circuit breakers per provider
@@ -243,16 +250,10 @@ class AIOrchestrator:
                 )
                 continue
 
-            extra_kwargs = {
-                k: v for k, v in kwargs.items()
-                if k not in ("prompt", "temperature", "model")
-            }
-            c_key = cache_key(
-                provider=provider_name,
-                model=provider.model_name,
+            c_key = generate_cache_key(
                 prompt=prompt,
                 temperature=temperature,
-                **extra_kwargs,
+                kwargs=kwargs,
             )
             # 1. Check TTL Cache (In-Memory + Redis)
             try:
