@@ -90,13 +90,14 @@ jobs:
           cat /tmp/migration-diff.txt
           allowed_correction_055='R000 backend/migrations/055_keyset_pagination_indexes.sql backend/migrations/056_keyset_pagination_indexes.sql'
           allowed_correction_057='R000 backend/migrations/057_task_prerequisites.sql backend/migrations/058_task_prerequisites.sql'
+          allowed_correction_061='R000 backend/migrations/057_performance_risk_alerts.sql backend/migrations/061_performance_risk_alerts.sql'
           normalized_diff=$(tr '\t' ' ' < /tmp/migration-diff.txt | tr -s ' ' | sed '/^$/d')
-          disallowed_diff=$(printf '%s\n' "$normalized_diff" | awk -v allowed055="$allowed_correction_055" -v allowed057="$allowed_correction_057" '
+          disallowed_diff=$(printf '%s\n' "$normalized_diff" | awk -v allowed055="$allowed_correction_055" -v allowed057="$allowed_correction_057" -v allowed061="$allowed_correction_061" '
             $1 == "A" { next }
             $0 ~ /^R[0-9][0-9][0-9] / {
               candidate = $0
               sub(/^R[0-9][0-9][0-9] /, "R000 ", candidate)
-              if (candidate == allowed055 || candidate == allowed057) next
+              if (candidate == allowed055 || candidate == allowed057 || candidate == allowed061) next
             }
             { print }
           ')
@@ -110,6 +111,9 @@ jobs:
           fi
           if printf '%s\n' "$normalized_diff" | grep -Eq '^R[0-9]{3} backend/migrations/057_task_prerequisites.sql backend/migrations/058_task_prerequisites.sql$'; then
             echo "Allowed one-time corrective rename of the duplicate 057 task prerequisite migration to 058."
+          fi
+          if printf '%s\n' "$normalized_diff" | grep -Eq '^R[0-9]{3} backend/migrations/057_performance_risk_alerts.sql backend/migrations/061_performance_risk_alerts.sql$'; then
+            echo "Allowed one-time corrective rename of the duplicate 057 performance risk alerts migration to 061."
           fi
 
       - name: Run backend lint
