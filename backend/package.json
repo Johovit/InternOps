@@ -10,7 +10,8 @@
     "test": "cross-env NODE_ENV=test jest --config jest.config.js --runInBand --detectOpenHandles --testTimeout=15000",
     "format": "prettier --write .",
     "lint": "eslint .",
-    "lint:db": "node scripts/lint-db.js"
+    "lint:db": "node scripts/lint-db.js",
+    "admin:recover": "node seeds/recover-admin.js"
   },
   "dependencies": {
     "@fastify/compress": "^9.0.0",
